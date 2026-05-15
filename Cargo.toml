@@ -1,0 +1,18 @@
+[package]
+name = "cortex-snn"
+version = "0.1.0"
+description = "Spiking-neural-network substrate for the Cortex project — pure-Rust, no I/O, embed-anywhere"
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "cortex_snn"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
