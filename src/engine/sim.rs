@@ -10,7 +10,9 @@
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::domain::{LifNeuron, Neuron, NeuronTickCtx, StdpSynapse, Synapse, SynapseCtx};
+use crate::domain::{
+    HhNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx, StdpSynapse, Synapse, SynapseCtx,
+};
 use crate::engine::events::{SpikeEvent, SpikeFrame};
 
 pub struct SimEngine {
@@ -42,10 +44,22 @@ impl SimEngine {
         }
     }
 
+    /// Insert a default LIF neuron with the given id, if not present.
+    /// Kept as the no-arg convenience for the existing call sites; new
+    /// callers that need HH should use [`Self::add_neuron_with_kind`].
     pub fn add_neuron(&mut self, id: Uuid) {
-        self.neurons
-            .entry(id)
-            .or_insert_with(|| Box::new(LifNeuron::new(id)));
+        self.add_neuron_with_kind(id, &NeuronKind::Lif);
+    }
+
+    /// Insert a neuron of the requested kind, if not present. Existing
+    /// neurons are left alone — kind selection happens at creation.
+    pub fn add_neuron_with_kind(&mut self, id: Uuid, kind: &NeuronKind) {
+        if self.neurons.contains_key(&id) { return; }
+        let neuron: Box<dyn Neuron> = match kind {
+            NeuronKind::Lif => Box::new(LifNeuron::new(id)),
+            NeuronKind::Hh(cfg) => Box::new(HhNeuron::with_config(id, cfg.clone())),
+        };
+        self.neurons.insert(id, neuron);
     }
 
     pub fn add_edge(&mut self, edge_id: Uuid, pre: Uuid, post: Uuid, weight: f32) {

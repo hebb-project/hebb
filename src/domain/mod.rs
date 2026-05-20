@@ -22,6 +22,6 @@ pub mod neuron;
 pub mod stimulator;
 pub mod synapse;
 
-pub use neuron::{LifNeuron, Neuron, NeuronTickCtx};
+pub use neuron::{HhConfig, HhIntegrator, HhNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx};
 pub use stimulator::{ManualStimulator, StimInput, Stimulator};
 pub use synapse::{StdpSynapse, Synapse, SynapseCtx};

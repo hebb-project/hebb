@@ -38,7 +38,7 @@ pub mod engine;
 // included so a new caller can build a working sim without manually
 // reaching into the submodules.
 pub use domain::{
-    LifNeuron, ManualStimulator, Neuron, NeuronTickCtx, StdpSynapse, StimInput, Stimulator,
-    Synapse, SynapseCtx,
+    HhConfig, HhIntegrator, HhNeuron, LifNeuron, ManualStimulator, Neuron, NeuronKind,
+    NeuronTickCtx, StdpSynapse, StimInput, Stimulator, Synapse, SynapseCtx,
 };
 pub use engine::{SimEngine, SpikeEvent, SpikeFrame, WeightDelta, WeightFrame};
