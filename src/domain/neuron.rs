@@ -3,6 +3,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::domain::neuron_adex::AdExConfig;
+use crate::domain::neuron_izhikevich::IzhikevichConfig;
+
 /// Which concrete neuron model a caller wants the engine to instantiate.
 ///
 /// Carries per-kind configuration so the engine can construct the
@@ -14,6 +17,8 @@ use uuid::Uuid;
 pub enum NeuronKind {
     Lif,
     Hh(HhConfig),
+    Izhikevich(IzhikevichConfig),
+    AdEx(AdExConfig),
 }
 
 impl NeuronKind {
@@ -21,6 +26,16 @@ impl NeuronKind {
     /// expected at simulation time).
     pub fn hh_default() -> Self {
         Self::Hh(HhConfig::default())
+    }
+
+    /// Regular-spiking Izhikevich neuron.
+    pub fn izhikevich_regular_spiking() -> Self {
+        Self::Izhikevich(IzhikevichConfig::regular_spiking())
+    }
+
+    /// Brette-Gerstner regular-spiking AdEx neuron.
+    pub fn adex_default() -> Self {
+        Self::AdEx(AdExConfig::default())
     }
 }
 

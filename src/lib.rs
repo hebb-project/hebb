@@ -55,7 +55,8 @@ pub use cortex::{AddNeuron, AddSynapse, Cortex, CreateOptions};
 // included so a new caller can build a working sim without manually
 // reaching into the submodules.
 pub use domain::{
-    HhConfig, HhIntegrator, HhNeuron, LifNeuron, ManualStimulator, Neuron, NeuronKind,
+    AdExConfig, AdExNeuron, HhConfig, HhIntegrator, HhNeuron, IzhikevichBehavior,
+    IzhikevichConfig, IzhikevichNeuron, LifNeuron, ManualStimulator, Neuron, NeuronKind,
     NeuronTickCtx, StdpSynapse, StimInput, Stimulator, Synapse, SynapseCtx,
 };
 pub use engine::{SimEngine, SpikeEvent, SpikeFrame, WeightDelta, WeightFrame};
