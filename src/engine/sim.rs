@@ -55,7 +55,9 @@ impl SimEngine {
     /// Insert a neuron of the requested kind, if not present. Existing
     /// neurons are left alone — kind selection happens at creation.
     pub fn add_neuron_with_kind(&mut self, id: Uuid, kind: &NeuronKind) {
-        if self.neurons.contains_key(&id) { return; }
+        if self.neurons.contains_key(&id) {
+            return;
+        }
         let neuron: Box<dyn Neuron> = match kind {
             NeuronKind::Lif => Box::new(LifNeuron::new(id)),
             NeuronKind::Hh(cfg) => Box::new(HhNeuron::with_config(id, cfg.clone())),
@@ -66,8 +68,12 @@ impl SimEngine {
     }
 
     pub fn add_edge(&mut self, edge_id: Uuid, pre: Uuid, post: Uuid, weight: f32) {
-        if pre == post { return; }
-        if !self.fan_out_keys.insert((pre, post)) { return; }
+        if pre == post {
+            return;
+        }
+        if !self.fan_out_keys.insert((pre, post)) {
+            return;
+        }
         // Ensure endpoint neurons exist (defensive — DB should guarantee).
         self.add_neuron(pre);
         self.add_neuron(post);
@@ -86,7 +92,8 @@ impl SimEngine {
         self.stim.remove(&id);
         self.fired_prev.remove(&id);
         let before = self.synapses.len();
-        self.synapses.retain(|s| s.pre_id() != id && s.post_id() != id);
+        self.synapses
+            .retain(|s| s.pre_id() != id && s.post_id() != id);
         let cascaded = before - self.synapses.len();
         // fan_in / fan_out_keys store synapse indices and (pre,post)
         // pairs — both need a full rebuild on any synapse removal.
@@ -120,7 +127,9 @@ impl SimEngine {
     }
 
     pub fn inject(&mut self, node_id: Uuid, current: f32, duration_ms: f32) {
-        if !self.neurons.contains_key(&node_id) { return; }
+        if !self.neurons.contains_key(&node_id) {
+            return;
+        }
         // Replace any in-flight injection on the same node — last write wins.
         self.stim.insert(node_id, (current, duration_ms));
     }
@@ -154,14 +163,21 @@ impl SimEngine {
         }
 
         // 3. Tick each neuron, collect spikes.
-        let ctx = NeuronTickCtx { dt_ms, t_ms: self.t_ms, modulator: self.modulator };
+        let ctx = NeuronTickCtx {
+            dt_ms,
+            t_ms: self.t_ms,
+            modulator: self.modulator,
+        };
         let mut fired_now: HashSet<Uuid> = HashSet::new();
         let mut events: Vec<SpikeEvent> = Vec::new();
         for (id, neuron) in self.neurons.iter_mut() {
             let i = input.get(id).copied().unwrap_or(0.0);
             if neuron.tick(i, &ctx) {
                 fired_now.insert(*id);
-                events.push(SpikeEvent { node_id: *id, t_ms: self.t_ms });
+                events.push(SpikeEvent {
+                    node_id: *id,
+                    t_ms: self.t_ms,
+                });
             }
         }
 
@@ -184,8 +200,12 @@ impl SimEngine {
         SpikeFrame::new(self.t_ms, events)
     }
 
-    pub fn n_neurons(&self) -> usize { self.neurons.len() }
-    pub fn n_synapses(&self) -> usize { self.synapses.len() }
+    pub fn n_neurons(&self) -> usize {
+        self.neurons.len()
+    }
+    pub fn n_synapses(&self) -> usize {
+        self.synapses.len()
+    }
 
     /// Return the introspectable parameters for a neuron by ID, or
     /// `None` if it isn't in the engine. Matches `Neuron::params`.
@@ -213,7 +233,10 @@ impl SimEngine {
     /// Dump every neuron's params keyed by ID. Drives a
     /// `GET /api/nodes/params` bulk endpoint.
     pub fn all_neuron_params(&self) -> Vec<(Uuid, serde_json::Value)> {
-        self.neurons.iter().map(|(id, n)| (*id, n.params())).collect()
+        self.neurons
+            .iter()
+            .map(|(id, n)| (*id, n.params()))
+            .collect()
     }
 
     /// List the neuron IDs currently in the engine — useful for a
@@ -221,8 +244,46 @@ impl SimEngine {
     pub fn list_neurons(&self) -> Vec<Uuid> {
         self.neurons.keys().copied().collect()
     }
+
+    /// Return the introspectable parameters for a synapse by edge ID,
+    /// or `None` if it isn't in the engine. Matches `Synapse::params`.
+    pub fn synapse_params(&self, edge_id: Uuid) -> Option<serde_json::Value> {
+        self.synapses
+            .iter()
+            .find(|s| s.id() == edge_id)
+            .map(|s| s.params())
+    }
+
+    /// Mutate a named parameter on a synapse, preserving the substrate's
+    /// `ParamError` so callers see the same validation text as neurons.
+    pub fn set_synapse_param(
+        &mut self,
+        edge_id: Uuid,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<serde_json::Value, crate::domain::ParamError> {
+        match self.synapses.iter_mut().find(|s| s.id() == edge_id) {
+            Some(s) => s.set_param(key, value),
+            None => Err(crate::domain::ParamError::Unknown {
+                key: format!("synapse {edge_id} (not in engine)"),
+            }),
+        }
+    }
+
+    /// Dump every synapse's params keyed by edge ID. Drives
+    /// `GET /api/synapses/params`.
+    pub fn all_synapse_params(&self) -> Vec<(Uuid, serde_json::Value)> {
+        self.synapses.iter().map(|s| (s.id(), s.params())).collect()
+    }
+
+    /// List stable edge IDs currently in the engine.
+    pub fn list_synapses(&self) -> Vec<Uuid> {
+        self.synapses.iter().map(|s| s.id()).collect()
+    }
 }
 
 impl Default for SimEngine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

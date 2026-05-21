@@ -8,6 +8,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::domain::ParamError;
+
 #[derive(Debug, Clone, Copy)]
 pub struct SynapseCtx {
     pub dt_ms: f32,
@@ -40,6 +42,23 @@ pub trait Synapse: Send + Sync + 'static {
     fn update(&mut self, ctx: &SynapseCtx);
 
     fn serialize_state(&self) -> serde_json::Value;
+
+    /// Return introspectable parameters as JSON. Defaults to the full
+    /// serializable state; implementations can override to hide
+    /// internal fields later.
+    fn params(&self) -> serde_json::Value {
+        self.serialize_state()
+    }
+
+    /// Mutate a named parameter and return the new full param set.
+    /// Default is read-only so new synapse impls opt in explicitly.
+    fn set_param(
+        &mut self,
+        key: &str,
+        _value: &serde_json::Value,
+    ) -> Result<serde_json::Value, ParamError> {
+        Err(ParamError::Unknown { key: key.into() })
+    }
 }
 
 // ─── STDP reference implementation ────────────────────────────────────────
@@ -93,14 +112,28 @@ impl StdpSynapse {
 }
 
 impl Synapse for StdpSynapse {
-    fn id(&self) -> Uuid { self.id }
-    fn pre_id(&self) -> Uuid { self.pre_id }
-    fn post_id(&self) -> Uuid { self.post_id }
-    fn weight(&self) -> f32 { self.weight }
-    fn set_weight(&mut self, w: f32) { self.weight = w.clamp(self.w_min, self.w_max); }
+    fn id(&self) -> Uuid {
+        self.id
+    }
+    fn pre_id(&self) -> Uuid {
+        self.pre_id
+    }
+    fn post_id(&self) -> Uuid {
+        self.post_id
+    }
+    fn weight(&self) -> f32 {
+        self.weight
+    }
+    fn set_weight(&mut self, w: f32) {
+        self.weight = w.clamp(self.w_min, self.w_max);
+    }
 
     fn transmit(&self, pre_fired: bool) -> f32 {
-        if pre_fired { self.weight * self.g_syn } else { 0.0 }
+        if pre_fired {
+            self.weight * self.g_syn
+        } else {
+            0.0
+        }
     }
 
     fn update(&mut self, ctx: &SynapseCtx) {
@@ -113,18 +146,152 @@ impl Synapse for StdpSynapse {
         if ctx.pre_fired {
             self.pre_trace += 1.0;
             // Pre-after-post → depression (anti-causal).
-            self.weight = (self.weight - self.a_minus * self.post_trace)
-                .clamp(self.w_min, self.w_max);
+            self.weight =
+                (self.weight - self.a_minus * self.post_trace).clamp(self.w_min, self.w_max);
         }
         if ctx.post_fired {
             self.post_trace += 1.0;
             // Post-after-pre → potentiation (causal).
-            self.weight = (self.weight + self.a_plus * self.pre_trace)
-                .clamp(self.w_min, self.w_max);
+            self.weight =
+                (self.weight + self.a_plus * self.pre_trace).clamp(self.w_min, self.w_max);
         }
     }
 
     fn serialize_state(&self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+
+    fn set_param(
+        &mut self,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<serde_json::Value, ParamError> {
+        match key {
+            "weight" => self.weight = require_in_range(key, value, self.w_min, self.w_max)?,
+            "w_min" => {
+                let w_min = require_in_range(key, value, 0.0, 1.0)?;
+                if w_min > self.w_max {
+                    return Err(ParamError::OutOfRange {
+                        key: key.into(),
+                        reason: "must be <= w_max".into(),
+                    });
+                }
+                self.w_min = w_min;
+                self.weight = self.weight.clamp(self.w_min, self.w_max);
+            }
+            "w_max" => {
+                let w_max = require_in_range(key, value, 0.0, 1.0)?;
+                if w_max < self.w_min {
+                    return Err(ParamError::OutOfRange {
+                        key: key.into(),
+                        reason: "must be >= w_min".into(),
+                    });
+                }
+                self.w_max = w_max;
+                self.weight = self.weight.clamp(self.w_min, self.w_max);
+            }
+            "g_syn" => self.g_syn = require_in_range(key, value, 0.0, 10_000.0)?,
+            "a_plus" => self.a_plus = require_in_range(key, value, 0.0, 1.0)?,
+            "a_minus" => self.a_minus = require_in_range(key, value, 0.0, 1.0)?,
+            "tau_plus" => self.tau_plus = require_in_range(key, value, 0.001, 10_000.0)?,
+            "tau_minus" => self.tau_minus = require_in_range(key, value, 0.001, 10_000.0)?,
+            "pre_trace" => self.pre_trace = require_in_range(key, value, 0.0, 1_000_000.0)?,
+            "post_trace" => self.post_trace = require_in_range(key, value, 0.0, 1_000_000.0)?,
+            "id" | "pre_id" | "post_id" => {
+                return Err(ParamError::Forbidden {
+                    key: key.into(),
+                    reason: "identity/topology fields are immutable; use graph edit APIs".into(),
+                });
+            }
+            _ => return Err(ParamError::Unknown { key: key.into() }),
+        }
+        Ok(self.params())
+    }
+}
+
+fn require_finite_f32(key: &str, value: &serde_json::Value) -> Result<f32, ParamError> {
+    let n = value.as_f64().ok_or_else(|| ParamError::BadType {
+        key: key.into(),
+        want: "finite number",
+    })?;
+    let f = n as f32;
+    if !f.is_finite() {
+        return Err(ParamError::OutOfRange {
+            key: key.into(),
+            reason: "not finite".into(),
+        });
+    }
+    Ok(f)
+}
+
+fn require_in_range(
+    key: &str,
+    value: &serde_json::Value,
+    lo: f32,
+    hi: f32,
+) -> Result<f32, ParamError> {
+    let f = require_finite_f32(key, value)?;
+    if f < lo || f > hi {
+        return Err(ParamError::OutOfRange {
+            key: key.into(),
+            reason: format!("must be in [{lo}, {hi}]"),
+        });
+    }
+    Ok(f)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stdp_params_expose_state() {
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let s = StdpSynapse::new(Uuid::new_v4(), a, b, 0.4);
+
+        let params = s.params();
+        assert_eq!(params["pre_id"], a.to_string());
+        assert_eq!(params["post_id"], b.to_string());
+        assert!((params["weight"].as_f64().unwrap() - 0.4).abs() < 1e-6);
+        assert!((params["g_syn"].as_f64().unwrap() - 80.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn stdp_set_param_updates_tunables() {
+        let mut s = StdpSynapse::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0.4);
+
+        let after = s.set_param("a_plus", &serde_json::json!(0.25)).unwrap();
+        assert!((after["a_plus"].as_f64().unwrap() - 0.25).abs() < 1e-6);
+        assert_eq!(s.a_plus, 0.25);
+
+        let after = s.set_param("weight", &serde_json::json!(0.9)).unwrap();
+        assert!((after["weight"].as_f64().unwrap() - 0.9).abs() < 1e-6);
+        assert_eq!(s.weight, 0.9);
+    }
+
+    #[test]
+    fn stdp_set_param_rejects_bad_values() {
+        let mut s = StdpSynapse::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0.4);
+
+        assert!(matches!(
+            s.set_param("tau_plus", &serde_json::json!(0.0))
+                .unwrap_err(),
+            ParamError::OutOfRange { .. }
+        ));
+        assert!(matches!(
+            s.set_param("a_minus", &serde_json::json!("fast"))
+                .unwrap_err(),
+            ParamError::BadType { .. }
+        ));
+        assert!(matches!(
+            s.set_param("pre_id", &serde_json::json!(Uuid::new_v4().to_string()))
+                .unwrap_err(),
+            ParamError::Forbidden { .. }
+        ));
+        assert!(matches!(
+            s.set_param("nope", &serde_json::json!(1.0)).unwrap_err(),
+            ParamError::Unknown { .. }
+        ));
     }
 }
