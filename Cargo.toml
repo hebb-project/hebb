@@ -14,5 +14,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 
+[features]
+default = []
+# Enables `cortex_snn::disk` — filesystem reader/writer for `.cortex/`
+# folders. Off by default so embed-anywhere consumers (wasm, FFI,
+# pure-sim tests) pull zero filesystem code. Pure `std::fs`, no
+# extra deps; the feature flag just gates the module compilation.
+disk = []
+
 [dev-dependencies]
 serde_json = { workspace = true }

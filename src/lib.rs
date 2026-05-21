@@ -1,8 +1,10 @@
 //! `cortex-snn` — the spiking-neural-network substrate.
 //!
-//! Pure-Rust, no I/O, no async, no globals. The crate exposes a
-//! deterministic state machine: build a [`engine::SimEngine`], push
-//! neurons / edges / stimulation into it, advance it tick-by-tick,
+//! Pure-Rust, no async, no globals. By default also no I/O — file I/O
+//! lives behind the `disk` feature, so consumers (wasm, embedded
+//! simulators, pure-sim tests) opt in only when they want it. The crate
+//! exposes a deterministic state machine: build a [`engine::SimEngine`],
+//! push neurons / edges / stimulation into it, advance it tick-by-tick,
 //! read spike frames and weight snapshots out.
 //!
 //! ## Why this crate exists
@@ -27,11 +29,20 @@
 //! - [`engine`] — the [`engine::SimEngine`] state machine and the
 //!   wire-format event types (`SpikeEvent`, `SpikeFrame`, `WeightDelta`,
 //!   `WeightFrame`) that consumers serialize over the network.
+//! - [`format`] — pure serde + byte-level codecs for the `.cortex/`
+//!   folder (`topology.json`, `weights/{type}/latest.cwt`,
+//!   `state/{type}/latest.json`). No I/O.
+//! - [`disk`] (feature `disk`) — filesystem reader/writer over `format`
+//!   with atomic-write semantics. Off by default.
 //!
 //! Everything else is an implementation detail of the consumer.
 
 pub mod domain;
 pub mod engine;
+pub mod format;
+
+#[cfg(feature = "disk")]
+pub mod disk;
 
 // Convenience top-level re-exports. The trait set is the actual API
 // surface most consumers want; the concrete LIF / STDP types are
