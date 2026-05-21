@@ -24,11 +24,13 @@
 //!   at version `N-1` rejects cleanly. Add a new version, never silently
 //!   evolve the schema.
 
+pub mod metadata;
 pub mod state;
 pub mod topology;
 pub mod weights;
 
-pub use state::{StateFile, STATE_FORMAT};
+pub use metadata::{MetadataError, MetadataFile, METADATA_VERSION};
+pub use state::{StateError, StateFile, STATE_FORMAT};
 pub use topology::{
     NeuronSpec, SynapseSpec, TopologyDefaults, TopologyEdge, TopologyError, TopologyFile,
     TopologyNode, TOPOLOGY_FORMAT,

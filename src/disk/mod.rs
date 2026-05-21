@@ -27,6 +27,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::format::{
+    metadata::{MetadataError, MetadataFile},
     state::{StateError, StateFile},
     topology::{TopologyError, TopologyFile, DEFAULT_MAX_TOPOLOGY_BYTES},
     weights::{WeightsError, WeightsFile},
@@ -48,6 +49,7 @@ pub enum DiskError {
     Topology(TopologyError),
     Weights(WeightsError),
     State(StateError),
+    Metadata(MetadataError),
     /// The configured byte limit was exceeded *before* parsing — we
     /// never allocate a multi-gigabyte buffer for an attacker-supplied
     /// topology file.
@@ -63,6 +65,7 @@ impl std::fmt::Display for DiskError {
             Self::Topology(e) => write!(f, "{e}"),
             Self::Weights(e) => write!(f, "{e}"),
             Self::State(e) => write!(f, "{e}"),
+            Self::Metadata(e) => write!(f, "{e}"),
             Self::TopologyTooLarge { path, bytes, limit } => write!(
                 f,
                 "topology file {} is {} bytes, exceeds limit of {} (set {} to override)",
@@ -82,6 +85,7 @@ impl std::error::Error for DiskError {
             Self::Topology(e) => Some(e),
             Self::Weights(e) => Some(e),
             Self::State(e) => Some(e),
+            Self::Metadata(e) => Some(e),
             _ => None,
         }
     }
@@ -105,6 +109,11 @@ impl From<WeightsError> for DiskError {
 impl From<StateError> for DiskError {
     fn from(e: StateError) -> Self {
         Self::State(e)
+    }
+}
+impl From<MetadataError> for DiskError {
+    fn from(e: MetadataError) -> Self {
+        Self::Metadata(e)
     }
 }
 
@@ -149,6 +158,11 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), DiskError> {
     Ok(())
 }
 
+/// Canonical relative path to `metadata.json` inside a `.cortex/` root.
+pub fn metadata_path(cortex_root: &Path) -> PathBuf {
+    cortex_root.join("metadata.json")
+}
+
 /// Canonical relative path to `topology.json` inside a `.cortex/` root.
 pub fn topology_path(cortex_root: &Path) -> PathBuf {
     cortex_root.join("topology.json")
@@ -162,6 +176,25 @@ pub fn weights_path(cortex_root: &Path, cortex_type: &str) -> PathBuf {
 /// Canonical relative path to `state/{type}/latest.json`.
 pub fn state_path(cortex_root: &Path, cortex_type: &str) -> PathBuf {
     cortex_root.join("state").join(cortex_type).join("latest.json")
+}
+
+/// Read the metadata file. Tolerates v1 files via the format-layer
+/// migration (returns a v2-shaped value); does not rewrite the file
+/// to disk. Caller upgrades on disk by calling [`write_metadata`].
+pub fn read_metadata(cortex_root: &Path) -> Result<MetadataFile, DiskError> {
+    let path = metadata_path(cortex_root);
+    if !path.is_file() {
+        return Err(DiskError::FileMissing(path));
+    }
+    let mut bytes = Vec::new();
+    BufReader::new(File::open(&path)?).read_to_end(&mut bytes)?;
+    Ok(MetadataFile::from_json_bytes(&bytes)?)
+}
+
+/// Write the metadata file atomically.
+pub fn write_metadata(cortex_root: &Path, m: &MetadataFile) -> Result<(), DiskError> {
+    let bytes = m.to_json_bytes()?;
+    write_atomic(&metadata_path(cortex_root), &bytes)
 }
 
 /// Read the topology file with the size guard enforced before parsing.

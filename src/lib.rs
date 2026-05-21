@@ -44,6 +44,12 @@ pub mod format;
 #[cfg(feature = "disk")]
 pub mod disk;
 
+#[cfg(feature = "disk")]
+pub mod cortex;
+
+#[cfg(feature = "disk")]
+pub use cortex::{AddNeuron, AddSynapse, Cortex, CreateOptions};
+
 // Convenience top-level re-exports. The trait set is the actual API
 // surface most consumers want; the concrete LIF / STDP types are
 // included so a new caller can build a working sim without manually
