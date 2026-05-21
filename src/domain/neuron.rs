@@ -68,6 +68,120 @@ pub trait Neuron: Send + Sync + 'static {
     /// Serialize internal state for persistence / wire snapshots. JSON for
     /// M0 (legible); binary format is a future migration behind this method.
     fn serialize_state(&self) -> serde_json::Value;
+
+    /// Return the neuron's introspectable parameters as a JSON object
+    /// of `{name: value}` pairs.
+    ///
+    /// Default implementation reuses [`Self::serialize_state`] — for
+    /// most neuron impls every field on the struct *is* a tunable
+    /// parameter. Override when the impl wants to expose a strict
+    /// subset (e.g. hide internal traces).
+    ///
+    /// The shape is intentionally JSON rather than a typed struct so
+    /// the agent harness, REST surface, and Python binding can ferry
+    /// param edits without per-kind plumbing in every layer.
+    fn params(&self) -> serde_json::Value {
+        self.serialize_state()
+    }
+
+    /// Mutate a named parameter. Default implementation refuses every
+    /// key — opt-in by overriding. Implementations must validate the
+    /// incoming `value` shape and return [`ParamError::BadType`] /
+    /// [`ParamError::OutOfRange`] cleanly; the substrate never panics
+    /// on bad agent input.
+    ///
+    /// Returns the *new* full param set on success so the caller can
+    /// confirm the write without a follow-up read.
+    fn set_param(
+        &mut self,
+        key: &str,
+        _value: &serde_json::Value,
+    ) -> Result<serde_json::Value, ParamError> {
+        Err(ParamError::Unknown { key: key.into() })
+    }
+}
+
+/// Errors a `set_param` call can produce. All carry stable, machine-
+/// parseable `Display` strings so the REST surface, Python binding,
+/// and agent harness all see the same text.
+#[derive(Debug, Clone)]
+pub enum ParamError {
+    /// The neuron impl doesn't recognize `key`.
+    Unknown { key: String },
+    /// `key` is recognized but `value`'s JSON shape was wrong (e.g.
+    /// expected a number, got a string).
+    BadType { key: String, want: &'static str },
+    /// `key` is recognized and well-typed but `value` is outside the
+    /// safe range for this parameter (e.g. negative time constant,
+    /// NaN reversal potential, refractory > 1s).
+    OutOfRange { key: String, reason: String },
+    /// Setting `key` is disallowed at this time (e.g. integrator
+    /// flips while a simulation is mid-tick).
+    Forbidden { key: String, reason: String },
+}
+
+impl std::fmt::Display for ParamError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unknown { key } => write!(f, "unknown parameter '{key}'"),
+            Self::BadType { key, want } => {
+                write!(f, "parameter '{key}' expects a {want}")
+            }
+            Self::OutOfRange { key, reason } => {
+                write!(f, "parameter '{key}' out of range: {reason}")
+            }
+            Self::Forbidden { key, reason } => {
+                write!(f, "parameter '{key}' cannot be set right now: {reason}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ParamError {}
+
+/// Helper for impls — parse a JSON value as `f32`, rejecting NaN/Inf
+/// up front so neuron state can never enter an unphysical region via
+/// the param API. Used by both `LifNeuron::set_param` and
+/// `HhNeuron::set_param`.
+fn require_finite_f32(key: &str, value: &serde_json::Value) -> Result<f32, ParamError> {
+    let n = value
+        .as_f64()
+        .ok_or_else(|| ParamError::BadType { key: key.into(), want: "finite number" })?;
+    let f = n as f32;
+    if !f.is_finite() {
+        return Err(ParamError::OutOfRange {
+            key: key.into(),
+            reason: "not finite".into(),
+        });
+    }
+    Ok(f)
+}
+
+fn require_in_range(
+    key: &str,
+    value: &serde_json::Value,
+    lo: f32,
+    hi: f32,
+) -> Result<f32, ParamError> {
+    let f = require_finite_f32(key, value)?;
+    if f < lo || f > hi {
+        return Err(ParamError::OutOfRange {
+            key: key.into(),
+            reason: format!("must be in [{lo}, {hi}]"),
+        });
+    }
+    Ok(f)
+}
+
+fn require_positive(key: &str, value: &serde_json::Value) -> Result<f32, ParamError> {
+    let f = require_finite_f32(key, value)?;
+    if f <= 0.0 {
+        return Err(ParamError::OutOfRange {
+            key: key.into(),
+            reason: "must be > 0".into(),
+        });
+    }
+    Ok(f)
 }
 
 // ─── LIF reference implementation ─────────────────────────────────────────
@@ -152,6 +266,59 @@ impl Neuron for LifNeuron {
 
     fn serialize_state(&self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+
+    fn set_param(
+        &mut self,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<serde_json::Value, ParamError> {
+        match key {
+            // Membrane potential — can be set directly (useful for
+            // "force a spike now" experiments via the agent harness).
+            // Allow the full reasonable biophysical range.
+            "v" => self.v = require_in_range(key, value, -100.0, 50.0)?,
+            "v_rest" => self.v_rest = require_in_range(key, value, -100.0, 0.0)?,
+            "v_thresh" => self.v_thresh = require_in_range(key, value, -80.0, 50.0)?,
+            "v_reset" => self.v_reset = require_in_range(key, value, -100.0, 0.0)?,
+            "tau_m" => self.tau_m = require_positive(key, value)?,
+            "tau_syn" => self.tau_syn = require_positive(key, value)?,
+            "refractory_ms" => {
+                let f = require_finite_f32(key, value)?;
+                if f < 0.0 || f > 1000.0 {
+                    return Err(ParamError::OutOfRange {
+                        key: key.into(),
+                        reason: "must be in [0, 1000] ms".into(),
+                    });
+                }
+                self.refractory_ms = f;
+            }
+            // Internal traces — exposed for testing / experimentation,
+            // not normally tuned. Out-of-range values are clamped to
+            // the same range as `tick` would observe.
+            "epsc" => {
+                let f = require_finite_f32(key, value)?;
+                if !(-1e6..=1e6).contains(&f) {
+                    return Err(ParamError::OutOfRange {
+                        key: key.into(),
+                        reason: "magnitude too large; expected within ±1e6".into(),
+                    });
+                }
+                self.epsc = f;
+            }
+            "refractory_left" => {
+                let f = require_finite_f32(key, value)?;
+                if f < 0.0 || f > self.refractory_ms.max(0.0) + 1.0 {
+                    return Err(ParamError::OutOfRange {
+                        key: key.into(),
+                        reason: "must be in [0, refractory_ms]".into(),
+                    });
+                }
+                self.refractory_left = f;
+            }
+            _ => return Err(ParamError::Unknown { key: key.into() }),
+        }
+        Ok(self.serialize_state())
     }
 }
 
@@ -373,6 +540,67 @@ impl Neuron for HhNeuron {
     fn serialize_state(&self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
+
+    fn set_param(
+        &mut self,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<serde_json::Value, ParamError> {
+        // The HH neuron groups parameters into the `cfg` config sub-
+        // struct (HK1952 conductances + reversal potentials) plus the
+        // dynamic state (v, m, h, n, refractory_left). Both surfaces
+        // are addressable through `set_param`. Names are flat (no
+        // `cfg.` prefix) so the agent harness doesn't have to know
+        // the internal layout.
+        match key {
+            // Dynamic state
+            "v" => self.v = require_in_range(key, value, -120.0, 80.0)?,
+            "m" => self.m = require_in_range(key, value, 0.0, 1.0)?,
+            "h" => self.h = require_in_range(key, value, 0.0, 1.0)?,
+            "n" => self.n = require_in_range(key, value, 0.0, 1.0)?,
+            "refractory_left" => {
+                self.refractory_left = require_in_range(key, value, 0.0, 100.0)?;
+            }
+
+            // HK1952 conductances / capacitance — must be > 0.
+            "c_m" => self.cfg.c_m = require_positive(key, value)?,
+            "g_na" => self.cfg.g_na = require_positive(key, value)?,
+            "g_k" => self.cfg.g_k = require_positive(key, value)?,
+            "g_l" => self.cfg.g_l = require_positive(key, value)?,
+
+            // Reversal potentials & resting V — wide biophysical range.
+            "e_na" => self.cfg.e_na = require_in_range(key, value, -100.0, 200.0)?,
+            "e_k" => self.cfg.e_k = require_in_range(key, value, -200.0, 50.0)?,
+            "e_l" => self.cfg.e_l = require_in_range(key, value, -200.0, 50.0)?,
+            "v_rest" => self.cfg.v_rest = require_in_range(key, value, -120.0, 50.0)?,
+
+            // Spike detection
+            "v_spike_thresh" => {
+                self.cfg.v_spike_thresh = require_in_range(key, value, -80.0, 80.0)?;
+            }
+            "refractory_ms" => self.cfg.refractory_ms = require_in_range(key, value, 0.0, 1000.0)?,
+
+            // Integrator switch — accept "euler" / "rk4" strings only.
+            "integrator" => {
+                let s = value.as_str().ok_or(ParamError::BadType {
+                    key: key.into(),
+                    want: "string \"euler\" or \"rk4\"",
+                })?;
+                self.cfg.integrator = match s {
+                    "euler" => HhIntegrator::Euler,
+                    "rk4" => HhIntegrator::Rk4,
+                    other => {
+                        return Err(ParamError::OutOfRange {
+                            key: key.into(),
+                            reason: format!("unknown integrator '{other}'; expected 'euler' or 'rk4'"),
+                        })
+                    }
+                };
+            }
+            _ => return Err(ParamError::Unknown { key: key.into() }),
+        }
+        Ok(self.serialize_state())
+    }
 }
 
 // ─── Hodgkin-Huxley rate constants (modern form, V in mV) ────────────────
@@ -432,4 +660,149 @@ fn gate_steady_state(v: f32) -> (f32, f32, f32) {
     let h_inf = alpha_h(v) / (alpha_h(v) + beta_h(v));
     let n_inf = alpha_n(v) / (alpha_n(v) + beta_n(v));
     (m_inf, h_inf, n_inf)
+}
+
+#[cfg(test)]
+mod param_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn lif() -> LifNeuron {
+        LifNeuron::new(Uuid::new_v4())
+    }
+
+    fn hh() -> HhNeuron {
+        HhNeuron::new(Uuid::new_v4())
+    }
+
+    // ── Read side ──────────────────────────────────────────────────
+
+    #[test]
+    fn lif_params_match_serialize_state() {
+        let n = lif();
+        let p = n.params();
+        let s = n.serialize_state();
+        assert_eq!(p, s);
+        // Spot-check a known field so a struct refactor doesn't
+        // silently drop a parameter.
+        assert!(p.get("v_thresh").and_then(|v| v.as_f64()).is_some());
+    }
+
+    #[test]
+    fn hh_params_include_config_and_state() {
+        let n = hh();
+        let p = n.params();
+        // Both nested (cfg.*) and top-level fields should be present
+        // — serialize_state walks the whole struct.
+        assert!(p.get("cfg").is_some());
+        assert!(p.get("v").is_some());
+    }
+
+    // ── Write side: LIF ────────────────────────────────────────────
+
+    #[test]
+    fn lif_set_param_updates_field_and_returns_new_params() {
+        let mut n = lif();
+        let after = n.set_param("v_thresh", &json!(-45.0)).unwrap();
+        assert_eq!(n.v_thresh, -45.0);
+        assert_eq!(after.get("v_thresh").and_then(|x| x.as_f64()), Some(-45.0));
+    }
+
+    #[test]
+    fn lif_set_param_unknown_key() {
+        let mut n = lif();
+        let err = n.set_param("nonexistent", &json!(1.0)).unwrap_err();
+        assert!(matches!(err, ParamError::Unknown { .. }));
+    }
+
+    #[test]
+    fn lif_set_param_rejects_nan() {
+        let mut n = lif();
+        let err = n.set_param("v_thresh", &json!(f64::NAN)).unwrap_err();
+        // NaN parses as None via serde_json's as_f64, so this surfaces
+        // as BadType, not OutOfRange. Both are acceptable from a
+        // safety standpoint — the state never enters the engine.
+        assert!(matches!(err, ParamError::BadType { .. } | ParamError::OutOfRange { .. }));
+    }
+
+    #[test]
+    fn lif_set_param_rejects_out_of_range() {
+        let mut n = lif();
+        // 100 mV is above the v_thresh's allowed upper bound (50).
+        let err = n.set_param("v_thresh", &json!(100.0)).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+        // tau_m must be > 0.
+        let err = n.set_param("tau_m", &json!(0.0)).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+    }
+
+    #[test]
+    fn lif_set_param_rejects_wrong_type() {
+        let mut n = lif();
+        let err = n.set_param("v_thresh", &json!("forty")).unwrap_err();
+        assert!(matches!(err, ParamError::BadType { .. }));
+    }
+
+    // ── Write side: HH ─────────────────────────────────────────────
+
+    #[test]
+    fn hh_set_param_state_fields() {
+        let mut n = hh();
+        n.set_param("v", &json!(-50.0)).unwrap();
+        assert_eq!(n.v, -50.0);
+        n.set_param("m", &json!(0.3)).unwrap();
+        assert_eq!(n.m, 0.3);
+    }
+
+    #[test]
+    fn hh_set_param_config_fields() {
+        let mut n = hh();
+        n.set_param("g_na", &json!(50.0)).unwrap();
+        assert_eq!(n.cfg.g_na, 50.0);
+        n.set_param("e_k", &json!(-80.0)).unwrap();
+        assert_eq!(n.cfg.e_k, -80.0);
+    }
+
+    #[test]
+    fn hh_set_param_integrator_accepts_known_strings() {
+        let mut n = hh();
+        n.set_param("integrator", &json!("rk4")).unwrap();
+        assert_eq!(n.cfg.integrator, HhIntegrator::Rk4);
+        n.set_param("integrator", &json!("euler")).unwrap();
+        assert_eq!(n.cfg.integrator, HhIntegrator::Euler);
+    }
+
+    #[test]
+    fn hh_set_param_integrator_rejects_unknown() {
+        let mut n = hh();
+        let err = n.set_param("integrator", &json!("midpoint")).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+        let err = n.set_param("integrator", &json!(42)).unwrap_err();
+        assert!(matches!(err, ParamError::BadType { .. }));
+    }
+
+    #[test]
+    fn hh_set_param_gating_var_clamped_to_unit_interval() {
+        let mut n = hh();
+        let err = n.set_param("m", &json!(1.5)).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+        let err = n.set_param("h", &json!(-0.1)).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+    }
+
+    #[test]
+    fn hh_set_param_conductances_must_be_positive() {
+        let mut n = hh();
+        let err = n.set_param("g_na", &json!(-1.0)).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+        let err = n.set_param("c_m", &json!(0.0)).unwrap_err();
+        assert!(matches!(err, ParamError::OutOfRange { .. }));
+    }
+
+    #[test]
+    fn hh_set_param_unknown_key() {
+        let mut n = hh();
+        let err = n.set_param("ladybug", &json!(1.0)).unwrap_err();
+        assert!(matches!(err, ParamError::Unknown { .. }));
+    }
 }

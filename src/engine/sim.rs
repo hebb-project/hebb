@@ -149,6 +149,41 @@ impl SimEngine {
 
     pub fn n_neurons(&self) -> usize { self.neurons.len() }
     pub fn n_synapses(&self) -> usize { self.synapses.len() }
+
+    /// Return the introspectable parameters for a neuron by ID, or
+    /// `None` if it isn't in the engine. Matches `Neuron::params`.
+    pub fn neuron_params(&self, node_id: Uuid) -> Option<serde_json::Value> {
+        self.neurons.get(&node_id).map(|n| n.params())
+    }
+
+    /// Mutate a named parameter on a neuron. Forwards the substrate's
+    /// `ParamError` directly so REST + Python surfaces see the same
+    /// text the substrate produced.
+    pub fn set_neuron_param(
+        &mut self,
+        node_id: Uuid,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<serde_json::Value, crate::domain::ParamError> {
+        match self.neurons.get_mut(&node_id) {
+            Some(n) => n.set_param(key, value),
+            None => Err(crate::domain::ParamError::Unknown {
+                key: format!("node {node_id} (not in engine)"),
+            }),
+        }
+    }
+
+    /// Dump every neuron's params keyed by ID. Drives a
+    /// `GET /api/nodes/params` bulk endpoint.
+    pub fn all_neuron_params(&self) -> Vec<(Uuid, serde_json::Value)> {
+        self.neurons.iter().map(|(id, n)| (*id, n.params())).collect()
+    }
+
+    /// List the neuron IDs currently in the engine — useful for a
+    /// `GET /api/nodes` listing that doesn't fetch params.
+    pub fn list_neurons(&self) -> Vec<Uuid> {
+        self.neurons.keys().copied().collect()
+    }
 }
 
 impl Default for SimEngine {
