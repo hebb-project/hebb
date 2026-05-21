@@ -39,6 +39,7 @@ use crate::format::{
     },
     weights::{WeightRecord, WeightsFile},
 };
+use crate::seeds::Seed;
 
 /// Options for creating a fresh network. Kept as a separate struct
 /// (rather than ten positional args) because new fields (e.g. seed
@@ -252,6 +253,56 @@ impl Cortex {
         Ok(true)
     }
 
+    /// Bulk-apply a [`Seed`] to this cortex — adds every node and edge
+    /// in one shot, runs validation **once** at the end, persists
+    /// `topology.json` **once**. For a 1000-neuron seed this is the
+    /// difference between O(n²) writes and one.
+    ///
+    /// On validation failure the in-memory topology is rolled back to
+    /// its pre-call state, mirroring [`Self::add_neuron`] /
+    /// [`Self::add_synapse`]'s contract — a caller observing an `Err`
+    /// can be sure the handle is consistent.
+    pub fn apply_seed(&mut self, seed: Seed) -> Result<SeedReport, DiskError> {
+        let nodes_before = self.topology.nodes.len();
+        let edges_before = self.topology.edges.len();
+
+        for n in seed.nodes {
+            self.topology.nodes.push(TopologyNode {
+                id: n.id,
+                label: n.label,
+                kind: n.kind,
+                metadata: if matches!(n.metadata, serde_json::Value::Object(ref m) if m.is_empty()) {
+                    empty_object()
+                } else {
+                    n.metadata
+                },
+                init_state: None,
+            });
+        }
+        for e in seed.edges {
+            self.topology.edges.push(TopologyEdge {
+                id: e.id,
+                pre: e.pre,
+                post: e.post,
+                kind: e.kind,
+                init_weight: e.init_weight,
+                delay_ms: e.delay_ms,
+                metadata: empty_object(),
+            });
+        }
+
+        if let Err(err) = self.topology.validate() {
+            self.topology.nodes.truncate(nodes_before);
+            self.topology.edges.truncate(edges_before);
+            return Err(DiskError::Topology(err));
+        }
+        write_topology(&self.root, &self.topology)?;
+
+        let added_nodes = self.topology.nodes.len() - nodes_before;
+        let added_edges = self.topology.edges.len() - edges_before;
+        Ok(SeedReport { added_nodes, added_edges })
+    }
+
     /// Save metadata + topology to disk. Most edits already persist on
     /// the way through; this is for callers that mutate
     /// [`Self::metadata_mut`] directly (e.g. renaming a network).
@@ -362,6 +413,14 @@ pub struct AddSynapse {
     pub init_weight: f32,
     pub delay_ms: Option<f32>,
     pub metadata: Option<serde_json::Value>,
+}
+
+/// Summary returned by [`Cortex::apply_seed`]. Counts only the items
+/// **this** call added; the existing topology is unchanged on top of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct SeedReport {
+    pub added_nodes: usize,
+    pub added_edges: usize,
 }
 
 fn empty_object() -> serde_json::Value {
@@ -604,6 +663,57 @@ mod tests {
         );
         assert!(c.is_ok());
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn apply_seed_populates_topology() {
+        use crate::seeds::{ring, SeedParams};
+        let root = tmp_root("seedring");
+        let mut c = hh_create(&root);
+        let s = ring(8, 2, 0, SeedParams::default()).unwrap();
+        let report = c.apply_seed(s).unwrap();
+        assert_eq!(report.added_nodes, 8);
+        // ring with n=8, k=2 emits 2k per neuron = 32 edges.
+        assert_eq!(report.added_edges, 32);
+        // Re-open: persisted across save/reopen.
+        let opened = Cortex::open(&root).unwrap();
+        assert_eq!(opened.topology().nodes.len(), 8);
+        assert_eq!(opened.topology().edges.len(), 32);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn apply_seed_rolls_back_on_validation_failure() {
+        use crate::seeds::{SeedEdge, SeedNode, Seed};
+        let root = tmp_root("seedrollback");
+        let mut c = hh_create(&root);
+        let a = c.add_neuron(AddNeuron::default()).unwrap();
+        // Hand-craft a Seed whose edge references a node id not in the
+        // seed *and* not in the cortex — that's a dangling edge and
+        // validation must reject it.
+        let bogus = Uuid::new_v4();
+        let bad = Seed {
+            nodes: vec![SeedNode {
+                id: Uuid::new_v4(),
+                label: "ok".into(),
+                kind: None,
+                metadata: serde_json::Value::Object(Default::default()),
+            }],
+            edges: vec![SeedEdge {
+                id: Uuid::new_v4(),
+                pre: a,
+                post: bogus,
+                kind: None,
+                init_weight: 0.5,
+                delay_ms: 1.0,
+            }],
+        };
+        let err = c.apply_seed(bad).unwrap_err();
+        assert!(matches!(err, DiskError::Topology(TopologyError::DanglingEdge { .. })));
+        // Rollback: only the original neuron remains.
+        assert_eq!(c.topology().nodes.len(), 1);
+        assert_eq!(c.topology().edges.len(), 0);
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
