@@ -11,7 +11,8 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::domain::{
-    HhNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx, StdpSynapse, Synapse, SynapseCtx,
+    AdExNeuron, HhNeuron, IzhikevichNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx,
+    StdpSynapse, Synapse, SynapseCtx,
 };
 use crate::engine::events::{SpikeEvent, SpikeFrame};
 
@@ -58,6 +59,8 @@ impl SimEngine {
         let neuron: Box<dyn Neuron> = match kind {
             NeuronKind::Lif => Box::new(LifNeuron::new(id)),
             NeuronKind::Hh(cfg) => Box::new(HhNeuron::with_config(id, cfg.clone())),
+            NeuronKind::Izhikevich(cfg) => Box::new(IzhikevichNeuron::with_config(id, cfg.clone())),
+            NeuronKind::AdEx(cfg) => Box::new(AdExNeuron::with_config(id, cfg.clone())),
         };
         self.neurons.insert(id, neuron);
     }

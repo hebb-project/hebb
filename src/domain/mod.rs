@@ -19,9 +19,13 @@
 //!   M0 STDP impl ignores those fields; that's fine.
 
 pub mod neuron;
+pub mod neuron_adex;
+pub mod neuron_izhikevich;
 pub mod stimulator;
 pub mod synapse;
 
 pub use neuron::{HhConfig, HhIntegrator, HhNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx};
+pub use neuron_adex::{AdExConfig, AdExNeuron};
+pub use neuron_izhikevich::{IzhikevichBehavior, IzhikevichConfig, IzhikevichNeuron};
 pub use stimulator::{ManualStimulator, StimInput, Stimulator};
 pub use synapse::{StdpSynapse, Synapse, SynapseCtx};
