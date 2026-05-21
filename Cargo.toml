@@ -13,6 +13,10 @@ path = "src/lib.rs"
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+# Seedable, deterministic RNG for `cortex_snn::seeds`. `small_rng` is
+# enabled because we use `SmallRng` — fast, deterministic given a seed,
+# 0 dep overhead beyond `rand` itself.
+rand = { version = "0.8", default-features = false, features = ["small_rng", "std"] }
 
 [features]
 default = []

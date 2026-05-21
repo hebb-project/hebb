@@ -40,6 +40,7 @@
 pub mod domain;
 pub mod engine;
 pub mod format;
+pub mod seeds;
 
 #[cfg(feature = "disk")]
 pub mod disk;
@@ -48,7 +49,7 @@ pub mod disk;
 pub mod cortex;
 
 #[cfg(feature = "disk")]
-pub use cortex::{AddNeuron, AddSynapse, Cortex, CreateOptions};
+pub use cortex::{AddNeuron, AddSynapse, Cortex, CreateOptions, SeedReport};
 
 // Convenience top-level re-exports. The trait set is the actual API
 // surface most consumers want; the concrete LIF / STDP types are
