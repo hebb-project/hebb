@@ -77,6 +77,43 @@ impl SimEngine {
         self.fan_in.entry(post).or_default().push(idx);
     }
 
+    /// Remove a neuron and cascade to its incident synapses. Returns
+    /// the number of synapses that were cascaded.
+    pub fn remove_neuron(&mut self, id: Uuid) -> usize {
+        if self.neurons.remove(&id).is_none() {
+            return 0;
+        }
+        self.stim.remove(&id);
+        self.fired_prev.remove(&id);
+        let before = self.synapses.len();
+        self.synapses.retain(|s| s.pre_id() != id && s.post_id() != id);
+        let cascaded = before - self.synapses.len();
+        // fan_in / fan_out_keys store synapse indices and (pre,post)
+        // pairs — both need a full rebuild on any synapse removal.
+        self.rebuild_synapse_indices();
+        cascaded
+    }
+
+    /// Remove one synapse by stable edge id. Returns true if present.
+    pub fn remove_synapse(&mut self, edge_id: Uuid) -> bool {
+        let before = self.synapses.len();
+        self.synapses.retain(|s| s.id() != edge_id);
+        if self.synapses.len() == before {
+            return false;
+        }
+        self.rebuild_synapse_indices();
+        true
+    }
+
+    fn rebuild_synapse_indices(&mut self) {
+        self.fan_in.clear();
+        self.fan_out_keys.clear();
+        for (idx, syn) in self.synapses.iter().enumerate() {
+            self.fan_out_keys.insert((syn.pre_id(), syn.post_id()));
+            self.fan_in.entry(syn.post_id()).or_default().push(idx);
+        }
+    }
+
     /// Snapshot of every synapse's current weight, keyed by stable edge id.
     pub fn weight_snapshot(&self) -> Vec<(Uuid, f32)> {
         self.synapses.iter().map(|s| (s.id(), s.weight())).collect()
