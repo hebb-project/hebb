@@ -27,6 +27,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::format::{
+    event::{CortexEventRecord, EventError},
     metadata::{MetadataError, MetadataFile},
     state::{StateError, StateFile},
     topology::{TopologyError, TopologyFile, DEFAULT_MAX_TOPOLOGY_BYTES},
@@ -50,6 +51,7 @@ pub enum DiskError {
     Weights(WeightsError),
     State(StateError),
     Metadata(MetadataError),
+    Event(EventError),
     /// The configured byte limit was exceeded *before* parsing — we
     /// never allocate a multi-gigabyte buffer for an attacker-supplied
     /// topology file.
@@ -70,6 +72,7 @@ impl std::fmt::Display for DiskError {
             Self::Weights(e) => write!(f, "{e}"),
             Self::State(e) => write!(f, "{e}"),
             Self::Metadata(e) => write!(f, "{e}"),
+            Self::Event(e) => write!(f, "{e}"),
             Self::TopologyTooLarge { path, bytes, limit } => write!(
                 f,
                 "topology file {} is {} bytes, exceeds limit of {} (set {} to override)",
@@ -90,6 +93,7 @@ impl std::error::Error for DiskError {
             Self::Weights(e) => Some(e),
             Self::State(e) => Some(e),
             Self::Metadata(e) => Some(e),
+            Self::Event(e) => Some(e),
             _ => None,
         }
     }
@@ -118,6 +122,11 @@ impl From<StateError> for DiskError {
 impl From<MetadataError> for DiskError {
     fn from(e: MetadataError) -> Self {
         Self::Metadata(e)
+    }
+}
+impl From<EventError> for DiskError {
+    fn from(e: EventError) -> Self {
+        Self::Event(e)
     }
 }
 
@@ -186,6 +195,33 @@ pub fn state_path(cortex_root: &Path, cortex_type: &str) -> PathBuf {
         .join("state")
         .join(cortex_type)
         .join("latest.json")
+}
+
+/// Canonical path to the append-only `events.jsonl` log inside a `.cortex/` root.
+pub fn event_log_path(cortex_root: &Path) -> PathBuf {
+    cortex_root.join("events.jsonl")
+}
+
+/// Append one event record to `events.jsonl`, flushing immediately.
+///
+/// The file is created if absent. Each record occupies exactly one line
+/// (no embedded newlines). Flush-on-every-write is intentional: the log
+/// is the audit trail for agent writes, so we pay the extra syscall to
+/// avoid losing the last event on an unclean shutdown.
+///
+/// On failure the caller should log and continue — a failed append does
+/// not invalidate the topology/weights that were already persisted.
+pub fn append_event(cortex_root: &Path, record: &CortexEventRecord) -> Result<(), DiskError> {
+    let path = event_log_path(cortex_root);
+    let mut line = record.to_json_line()?;
+    line.push(b'\n');
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    file.write_all(&line)?;
+    file.flush()?;
+    Ok(())
 }
 
 /// Read the metadata file. Tolerates v1 files via the format-layer
