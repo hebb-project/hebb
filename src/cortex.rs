@@ -27,10 +27,11 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::disk::{
-    read_metadata, read_state, read_topology, read_weights, write_metadata, write_state,
-    write_topology, write_weights, DiskError,
+    append_event, read_metadata, read_state, read_topology, read_weights, write_metadata,
+    write_state, write_topology, write_weights, DiskError,
 };
 use crate::format::{
+    event::{CortexEventKind, CortexEventRecord},
     metadata::MetadataFile,
     state::StateFile,
     topology::{
@@ -204,6 +205,22 @@ impl Cortex {
             return Err(DiskError::Topology(e));
         }
         write_topology(&self.root, &self.topology)?;
+        // Best-effort: a failed append must not roll back the structural change.
+        let _ = append_event(
+            &self.root,
+            &CortexEventRecord::new(
+                0.0,
+                CortexEventKind::NeuronAdd {
+                    id,
+                    label: self
+                        .topology
+                        .nodes
+                        .last()
+                        .map(|n| n.label.clone())
+                        .unwrap_or_default(),
+                },
+            ),
+        );
         self.touch();
         Ok(id)
     }
@@ -228,6 +245,18 @@ impl Cortex {
             return Err(DiskError::Topology(e));
         }
         write_topology(&self.root, &self.topology)?;
+        let _ = append_event(
+            &self.root,
+            &CortexEventRecord::new(
+                0.0,
+                CortexEventKind::SynapseAdd {
+                    id,
+                    pre: spec.pre,
+                    post: spec.post,
+                    init_weight: spec.init_weight,
+                },
+            ),
+        );
         self.touch();
         Ok(id)
     }
@@ -246,6 +275,16 @@ impl Cortex {
         self.topology.edges.retain(|e| e.pre != id && e.post != id);
         let cascaded = e_before - self.topology.edges.len();
         write_topology(&self.root, &self.topology)?;
+        let _ = append_event(
+            &self.root,
+            &CortexEventRecord::new(
+                0.0,
+                CortexEventKind::NeuronRemove {
+                    id,
+                    cascaded_edges: cascaded,
+                },
+            ),
+        );
         self.touch();
         Ok(cascaded)
     }
@@ -257,6 +296,10 @@ impl Cortex {
             return Ok(false);
         }
         write_topology(&self.root, &self.topology)?;
+        let _ = append_event(
+            &self.root,
+            &CortexEventRecord::new(0.0, CortexEventKind::SynapseRemove { id }),
+        );
         self.touch();
         Ok(true)
     }
@@ -309,6 +352,16 @@ impl Cortex {
 
         let added_nodes = self.topology.nodes.len() - nodes_before;
         let added_edges = self.topology.edges.len() - edges_before;
+        let _ = append_event(
+            &self.root,
+            &CortexEventRecord::new(
+                0.0,
+                CortexEventKind::SeedApply {
+                    added_nodes,
+                    added_edges,
+                },
+            ),
+        );
         Ok(SeedReport {
             added_nodes,
             added_edges,

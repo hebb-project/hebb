@@ -349,7 +349,10 @@ fn topology_size_limit() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::format::topology::{NeuronSpec, SynapseSpec, TopologyDefaults};
+    use crate::format::{
+        event::{CortexEventKind, CortexEventRecord},
+        topology::{NeuronSpec, SynapseSpec, TopologyDefaults},
+    };
     use std::time::SystemTime;
 
     fn tmp_root(label: &str) -> PathBuf {
@@ -460,6 +463,74 @@ mod tests {
         let root = tmp_root("state-missing");
         let back = read_state(&root, "hh").unwrap();
         assert!(back.is_none());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn append_event_creates_file_and_accumulates() {
+        use uuid::Uuid;
+        let root = tmp_root("events");
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        let rec1 = CortexEventRecord::new(0.0, CortexEventKind::NeuronAdd { id: id1, label: "a".into() });
+        let rec2 = CortexEventRecord::new(1.0, CortexEventKind::NeuronAdd { id: id2, label: "b".into() });
+
+        append_event(&root, &rec1).unwrap();
+        append_event(&root, &rec2).unwrap();
+
+        // Read back: two lines, both parseable, in order.
+        let raw = fs::read_to_string(event_log_path(&root)).unwrap();
+        let lines: Vec<&str> = raw.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let back1 = CortexEventRecord::from_json_line(lines[0].as_bytes()).unwrap();
+        let back2 = CortexEventRecord::from_json_line(lines[1].as_bytes()).unwrap();
+        assert_eq!(back1, rec1);
+        assert_eq!(back2, rec2);
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn append_event_is_idempotent_across_reopens() {
+        use uuid::Uuid;
+        let root = tmp_root("events-reopen");
+        let rec = CortexEventRecord::new(
+            0.0,
+            CortexEventKind::NeuronAdd { id: Uuid::new_v4(), label: "x".into() },
+        );
+        // Three separate appends simulating three process opens.
+        for _ in 0..3 {
+            append_event(&root, &rec).unwrap();
+        }
+        let raw = fs::read_to_string(event_log_path(&root)).unwrap();
+        assert_eq!(raw.lines().count(), 3);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn truncated_last_line_does_not_corrupt_earlier_lines() {
+        use uuid::Uuid;
+        let root = tmp_root("events-truncate");
+        let good = CortexEventRecord::new(
+            0.0,
+            CortexEventKind::NeuronAdd { id: Uuid::new_v4(), label: "good".into() },
+        );
+        append_event(&root, &good).unwrap();
+
+        // Simulate a partial write by appending a truncated JSON blob.
+        let mut f = OpenOptions::new().append(true).open(event_log_path(&root)).unwrap();
+        f.write_all(b"{\"format\":\"cortex.event\",\"version\":1,\"t_ms").unwrap();
+
+        let raw = fs::read_to_string(event_log_path(&root)).unwrap();
+        let mut lines = raw.lines();
+        let first = lines.next().unwrap();
+        let back = CortexEventRecord::from_json_line(first.as_bytes()).unwrap();
+        assert_eq!(back, good);
+        // The truncated last line is a parse error, not a corruption of the first.
+        let bad = lines.next().unwrap();
+        assert!(CortexEventRecord::from_json_line(bad.as_bytes()).is_err());
+
         fs::remove_dir_all(&root).ok();
     }
 }
