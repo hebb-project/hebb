@@ -805,6 +805,61 @@ mod tests {
     }
 
     #[test]
+    fn structural_edits_produce_event_log() {
+        use crate::disk::event_log_path;
+        use crate::format::event::{CortexEventKind, CortexEventRecord};
+        let root = tmp_root("evtlog");
+        let mut c = hh_create(&root);
+
+        let a = c.add_neuron(AddNeuron { label: "pre".into(), ..Default::default() }).unwrap();
+        let b = c.add_neuron(AddNeuron { label: "post".into(), ..Default::default() }).unwrap();
+        let e = c.add_synapse(AddSynapse {
+            id: None, pre: a, post: b, kind: None, init_weight: 0.3, delay_ms: None, metadata: None,
+        }).unwrap();
+        c.remove_synapse(e).unwrap();
+        c.remove_neuron(a).unwrap();
+
+        let raw = fs::read_to_string(event_log_path(&root)).unwrap();
+        let records: Vec<CortexEventRecord> = raw
+            .lines()
+            .map(|l| CortexEventRecord::from_json_line(l.as_bytes()).unwrap())
+            .collect();
+
+        // 5 structural events in order.
+        assert_eq!(records.len(), 5);
+        assert!(matches!(&records[0].kind, CortexEventKind::NeuronAdd { label, .. } if label == "pre"));
+        assert!(matches!(&records[1].kind, CortexEventKind::NeuronAdd { label, .. } if label == "post"));
+        assert!(matches!(&records[2].kind, CortexEventKind::SynapseAdd { pre, .. } if *pre == a));
+        assert!(matches!(&records[3].kind, CortexEventKind::SynapseRemove { id } if *id == e));
+        assert!(matches!(&records[4].kind, CortexEventKind::NeuronRemove { id, cascaded_edges: 0 } if *id == a));
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn apply_seed_emits_single_seed_apply_event() {
+        use crate::disk::event_log_path;
+        use crate::format::event::{CortexEventKind, CortexEventRecord};
+        use crate::seeds::{ring, SeedParams};
+        let root = tmp_root("evtseed");
+        let mut c = hh_create(&root);
+        c.apply_seed(ring(4, 1, 0, SeedParams::default()).unwrap()).unwrap();
+
+        let raw = fs::read_to_string(event_log_path(&root)).unwrap();
+        let records: Vec<CortexEventRecord> = raw
+            .lines()
+            .map(|l| CortexEventRecord::from_json_line(l.as_bytes()).unwrap())
+            .collect();
+
+        assert_eq!(records.len(), 1);
+        assert!(matches!(
+            &records[0].kind,
+            CortexEventKind::SeedApply { added_nodes: 4, .. }
+        ));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn open_rejects_mismatched_files() {
         let root = tmp_root("mismatchfiles");
         let mut c = hh_create(&root);
