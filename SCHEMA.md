@@ -10,6 +10,43 @@ topology, weights, and warm-resume state from the folder without querying
 Postgres. Postgres may index or cache derived data, but for LIF and HH cortexes
 it is not the structural source of truth.
 
+## Format Goals
+
+The `.cortex/` format is intended to become the interchange contract for the
+desktop app, Python scripts, Rust applications embedding `cortex-snn`, and
+future systems that compose multiple cortex families together. The design is
+inspired by model artifact conventions in MLOps: model identity and
+configuration are small, inspectable metadata files; topology is a stable
+declarative graph; hot numeric tensors such as weights live in compact binary
+files; and readers can discover what they support before hydrating the full
+artifact.
+
+The core promises are:
+
+- **Interchangeable:** a folder produced by one supported writer should be
+  readable by any other supported reader that understands the advertised
+  cortex kind and file versions.
+- **Backwards-compatible by default:** additive fields, unknown metadata keys,
+  new cortex kinds, and new optional sidecar files should not break older
+  readers. Breaking changes require a version bump and migration.
+- **Explicit about unsupported features:** readers must reject unsupported file
+  versions, unknown required capabilities, and unknown implementation kinds with
+  actionable errors instead of silently approximating behavior.
+- **Scalable:** topology, weights, state, events, and embeddings are separated
+  because they grow and change at different rates. Large-network support should
+  evolve through sharding/index sidecars rather than replacing the folder
+  contract.
+- **Hybrid-ready:** today's LIF, HH, and knowledge-graph networks may live on
+  separate paths, but the format should allow future artifacts to describe
+  coupled SNN/KG/agent/memory systems without forcing all data into one
+  homogeneous graph type.
+
+Compatibility is therefore treated as a runtime capability question, not just a
+parser question. A reader can parse the envelope of a future artifact, inspect
+the advertised `format`, `version`, `cortex_type`, implementation `kind`s, and
+optional capabilities, then decide whether it can hydrate, inspect only,
+migrate, or reject.
+
 ## Folder Layout
 
 Example path: `~/Projects/MyNet/.cortex/`.
@@ -54,6 +91,11 @@ Example path: `~/Projects/MyNet/.cortex/`.
 Path policy for v1: the user picks a parent directory and the network metadata
 lives inside its hidden `.cortex/` child, for example
 `~/Projects/MyNet/.cortex/metadata.json`.
+
+Future layout policy: new data classes should be added as sidecar files or
+subdirectories with their own `format` and `version` instead of expanding
+`topology.json` into a catch-all artifact. The current v1 layout should remain
+valid as the minimal single-network bundle.
 
 ## `metadata.json`
 
@@ -150,6 +192,11 @@ Current format/version: `format = "cortex.topology"`, `version = 1`.
 | `nodes` | array | yes | Ordered list of topology nodes. IDs must be unique. | `[]` |
 | `edges` | array | yes | Ordered list of topology edges. IDs and `(pre, post, kind)` triples must be unique. | `[]` |
 | `metadata` | object | no | Opaque file-level JSON. Defaults to `{}`. | `{ "author": "lab-a" }` |
+
+`metadata` is the intended home for optional, non-load-bearing annotations such
+as provenance, layout hints, dataset references, paper/lab tags, or experimental
+notes. A reader must preserve unknown metadata where practical and must not
+require it for simulation correctness.
 
 ### `TopologyDefaults`
 
@@ -400,6 +447,74 @@ Each line is one JSON object:
 
 Replay tools may consume this file. Opening a network must not depend on it.
 
+## Future Hybrid Bundles
+
+The current v1 bundle describes one primary cortex topology. That is sufficient
+for folder-backed LIF/HH networks and keeps the first interchange target small.
+Hybrid systems should be added as a higher-level manifest rather than by
+overloading `topology.json`.
+
+Reserved direction:
+
+```text
+.cortex/
+  metadata.json
+  topology.json
+  weights/
+  state/
+  systems.json        # future: manifest of sub-networks/modules
+  couplings.json      # future: typed interfaces between systems
+```
+
+`systems.json` would describe a collection of components:
+
+```json
+{
+  "format": "cortex.systems",
+  "version": 1,
+  "systems": [
+    {
+      "id": "vision-reservoir",
+      "kind": "liquid-state-machine",
+      "root": ".",
+      "role": "perception"
+    },
+    {
+      "id": "semantic-memory",
+      "kind": "knowledge-graph",
+      "root": "kg/",
+      "role": "memory"
+    }
+  ]
+}
+```
+
+`couplings.json` would describe typed interaction surfaces between systems:
+
+```json
+{
+  "format": "cortex.couplings",
+  "version": 1,
+  "couplings": [
+    {
+      "id": "kg-to-snn-context",
+      "from": "semantic-memory",
+      "to": "vision-reservoir",
+      "kind": "context-injection",
+      "config": {
+        "target_port": "modulatory-current"
+      }
+    }
+  ]
+}
+```
+
+These files are not v1 load-bearing. They establish the compatibility rule for
+future hybrid architectures: keep component artifacts independently readable,
+then describe cross-system composition through explicit manifests and typed
+couplings. A desktop that does not understand hybrid execution could still
+inspect each component; a newer runtime could hydrate the full coupled system.
+
 ## Validation Rules
 
 Readers validate before returning data to callers. Writers validate before
@@ -482,6 +597,38 @@ The shared slug check is conservative:
   `{ "kind": "...", "config": ... }` envelope is sufficient.
 - Binary formats reserve fields such as `record_size` for forward-compatible
   validation, but v1 readers still reject record sizes they do not understand.
+- Optional sidecar files should be ignorable by older readers unless a future
+  manifest marks them as required capabilities.
+- Unknown fields in JSON objects should be ignored for hydration but preserved
+  by tools that rewrite files without semantically editing those fields.
+- Unknown implementation `kind`s are different from unknown annotations:
+  topology readers may parse them, but a simulator must reject hydration unless
+  the corresponding implementation is registered.
+- Any future required feature should be advertised in a manifest/capability
+  envelope before the reader has to parse large topology, state, or weight
+  payloads.
+
+## Scalability Policy
+
+The v1 topology file is intentionally simple JSON. That makes it useful for
+teaching, small research networks, diffs, and hand inspection. Large artifacts
+should scale by adding indexed sidecars rather than changing the meaning of
+existing files.
+
+Planned scale path:
+
+1. Keep `topology.json` as the canonical small-network representation.
+2. Add optional shard manifests for large networks, for example
+   `topology/manifest.json`, `topology/nodes-000.jsonl`, and
+   `topology/edges-000.jsonl`.
+3. Keep stable UUIDs as join keys across topology, weights, state, events, and
+   future embeddings.
+4. Keep hot numeric data in binary files with fixed-size records or documented
+   tensor layouts. JSON should not carry high-cadence weight/state snapshots at
+   scale.
+5. Treat indexes, caches, search databases, and rendered layouts as derived
+   artifacts. They may accelerate desktop/Python workflows but must not become
+   the only source of truth.
 
 ## Migration Template
 
