@@ -88,8 +88,7 @@ impl MetadataFile {
     /// [`Self::to_json_bytes`] + atomic write if they want the file
     /// upgraded.
     pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, MetadataError> {
-        let mut m: MetadataFile =
-            serde_json::from_slice(bytes).map_err(MetadataError::Parse)?;
+        let mut m: MetadataFile = serde_json::from_slice(bytes).map_err(MetadataError::Parse)?;
         if m.version == 1 {
             // Mirror the desktop's migration: `"fresh"` → `"lif"`,
             // `"knowledge-graph"` stays. Unknown kinds → reject so we
@@ -141,7 +140,8 @@ fn is_valid_kebab(s: &str) -> bool {
     if b[0] == b'-' || b[b.len() - 1] == b'-' {
         return false;
     }
-    b.iter().all(|c| matches!(c, b'a'..=b'z' | b'0'..=b'9' | b'-'))
+    b.iter()
+        .all(|c| matches!(c, b'a'..=b'z' | b'0'..=b'9' | b'-'))
 }
 
 #[derive(Debug)]
@@ -165,7 +165,10 @@ impl std::fmt::Display for MetadataError {
                 write!(f, "cortex_type '{s}' is not a valid kebab-case slug")
             }
             Self::UnknownSourceKind(s) => {
-                write!(f, "v1 metadata has unknown source_kind '{s}' (cannot migrate)")
+                write!(
+                    f,
+                    "v1 metadata has unknown source_kind '{s}' (cannot migrate)"
+                )
             }
             Self::EmptyName => write!(f, "metadata.name must not be empty"),
             Self::EmptySourceRoot => write!(f, "metadata.source_root must not be empty"),

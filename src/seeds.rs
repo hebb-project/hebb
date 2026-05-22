@@ -131,10 +131,9 @@ impl std::fmt::Display for SeedError {
                 f,
                 "ring degree k={k} is too large for n={n} neurons (need 2k < n)"
             ),
-            Self::BadProbability { name, value } => write!(
-                f,
-                "probability '{name}'={value} must be in [0.0, 1.0]"
-            ),
+            Self::BadProbability { name, value } => {
+                write!(f, "probability '{name}'={value} must be in [0.0, 1.0]")
+            }
             Self::EmptyLayers => write!(f, "layered() requires at least 2 layers"),
             Self::LayerZero { index } => write!(f, "layered() layer {index} has 0 neurons"),
         }
@@ -152,7 +151,10 @@ impl std::error::Error for SeedError {}
 pub fn random(n: usize, p: f32, seed: u64, params: SeedParams) -> Result<Seed, SeedError> {
     params.validate()?;
     if !(0.0..=1.0).contains(&p) || !p.is_finite() {
-        return Err(SeedError::BadProbability { name: "p", value: p });
+        return Err(SeedError::BadProbability {
+            name: "p",
+            value: p,
+        });
     }
     let mut rng = SmallRng::seed_from_u64(seed);
     let nodes = mint_nodes(n, "n", &params, &mut rng);
@@ -241,11 +243,7 @@ pub fn small_world(
 /// produces fully-connected directed edges between adjacent layers
 /// (no skip connections, no recurrence). Layer 0 → layer 1 → … →
 /// final. Useful as a "classical-ANN-shaped" starting point.
-pub fn layered(
-    layers: &[usize],
-    seed: u64,
-    params: SeedParams,
-) -> Result<Seed, SeedError> {
+pub fn layered(layers: &[usize], seed: u64, params: SeedParams) -> Result<Seed, SeedError> {
     params.validate()?;
     if layers.len() < 2 {
         return Err(SeedError::EmptyLayers);
@@ -307,7 +305,12 @@ fn mint_uuid(rng: &mut SmallRng) -> Uuid {
     Uuid::from_bytes(bytes)
 }
 
-fn mint_nodes(n: usize, label_prefix: &str, params: &SeedParams, rng: &mut SmallRng) -> Vec<SeedNode> {
+fn mint_nodes(
+    n: usize,
+    label_prefix: &str,
+    params: &SeedParams,
+    rng: &mut SmallRng,
+) -> Vec<SeedNode> {
     (0..n)
         .map(|i| SeedNode {
             id: mint_uuid(rng),
@@ -423,7 +426,11 @@ mod tests {
         // At p_rewire = 1.0, the vast majority of edges should land
         // somewhere new. Tolerate the rare case where the random
         // pick happens to equal the original post (1/n probability).
-        assert!(diffs > r.edges.len() / 2, "p_rewire=1 should change most posts (got {diffs}/{})", r.edges.len());
+        assert!(
+            diffs > r.edges.len() / 2,
+            "p_rewire=1 should change most posts (got {diffs}/{})",
+            r.edges.len()
+        );
     }
 
     #[test]
@@ -468,11 +475,17 @@ mod tests {
             weight_range: (0.7, 0.3),
             ..Default::default()
         };
-        assert!(matches!(bad.validate(), Err(SeedError::BadWeightRange { .. })));
+        assert!(matches!(
+            bad.validate(),
+            Err(SeedError::BadWeightRange { .. })
+        ));
         let nan = SeedParams {
             weight_range: (f32::NAN, 0.5),
             ..Default::default()
         };
-        assert!(matches!(nan.validate(), Err(SeedError::BadWeightRange { .. })));
+        assert!(matches!(
+            nan.validate(),
+            Err(SeedError::BadWeightRange { .. })
+        ));
     }
 }

@@ -40,7 +40,9 @@ impl NeuronKind {
 }
 
 impl Default for NeuronKind {
-    fn default() -> Self { Self::Lif }
+    fn default() -> Self {
+        Self::Lif
+    }
 }
 
 /// Per-tick context handed to every neuron. New fields are additive and
@@ -144,9 +146,10 @@ impl std::error::Error for ParamError {}
 /// the param API. Used by both `LifNeuron::set_param` and
 /// `HhNeuron::set_param`.
 fn require_finite_f32(key: &str, value: &serde_json::Value) -> Result<f32, ParamError> {
-    let n = value
-        .as_f64()
-        .ok_or_else(|| ParamError::BadType { key: key.into(), want: "finite number" })?;
+    let n = value.as_f64().ok_or_else(|| ParamError::BadType {
+        key: key.into(),
+        want: "finite number",
+    })?;
     let f = n as f32;
     if !f.is_finite() {
         return Err(ParamError::OutOfRange {
@@ -229,7 +232,9 @@ impl LifNeuron {
 }
 
 impl Neuron for LifNeuron {
-    fn node_id(&self) -> Uuid { self.id }
+    fn node_id(&self) -> Uuid {
+        self.id
+    }
 
     fn tick(&mut self, input_current: f32, ctx: &NeuronTickCtx) -> bool {
         let dt = ctx.dt_ms;
@@ -257,7 +262,9 @@ impl Neuron for LifNeuron {
         false
     }
 
-    fn membrane_potential(&self) -> f32 { self.v }
+    fn membrane_potential(&self) -> f32 {
+        self.v
+    }
 
     fn reset(&mut self) {
         self.v = self.v_rest;
@@ -352,7 +359,9 @@ pub enum HhIntegrator {
 }
 
 impl Default for HhIntegrator {
-    fn default() -> Self { Self::Euler }
+    fn default() -> Self {
+        Self::Euler
+    }
 }
 
 /// User-tunable parameters for a Hodgkin-Huxley neuron. Defaults are
@@ -466,7 +475,9 @@ impl HhNeuron {
 }
 
 impl Neuron for HhNeuron {
-    fn node_id(&self) -> Uuid { self.id }
+    fn node_id(&self) -> Uuid {
+        self.id
+    }
 
     fn tick(&mut self, input_current: f32, ctx: &NeuronTickCtx) -> bool {
         let dt = ctx.dt_ms;
@@ -474,7 +485,8 @@ impl Neuron for HhNeuron {
 
         match self.cfg.integrator {
             HhIntegrator::Euler => {
-                let (dv, dm, dh, dn) = self.derivatives(self.v, self.m, self.h, self.n, input_current);
+                let (dv, dm, dh, dn) =
+                    self.derivatives(self.v, self.m, self.h, self.n, input_current);
                 self.v += dv * dt;
                 self.m = (self.m + dm * dt).clamp(0.0, 1.0);
                 self.h = (self.h + dh * dt).clamp(0.0, 1.0);
@@ -505,9 +517,12 @@ impl Neuron for HhNeuron {
                     input_current,
                 );
                 self.v += dt / 6.0 * (k1.0 + 2.0 * k2.0 + 2.0 * k3.0 + k4.0);
-                self.m = (self.m + dt / 6.0 * (k1.1 + 2.0 * k2.1 + 2.0 * k3.1 + k4.1)).clamp(0.0, 1.0);
-                self.h = (self.h + dt / 6.0 * (k1.2 + 2.0 * k2.2 + 2.0 * k3.2 + k4.2)).clamp(0.0, 1.0);
-                self.n = (self.n + dt / 6.0 * (k1.3 + 2.0 * k2.3 + 2.0 * k3.3 + k4.3)).clamp(0.0, 1.0);
+                self.m =
+                    (self.m + dt / 6.0 * (k1.1 + 2.0 * k2.1 + 2.0 * k3.1 + k4.1)).clamp(0.0, 1.0);
+                self.h =
+                    (self.h + dt / 6.0 * (k1.2 + 2.0 * k2.2 + 2.0 * k3.2 + k4.2)).clamp(0.0, 1.0);
+                self.n =
+                    (self.n + dt / 6.0 * (k1.3 + 2.0 * k2.3 + 2.0 * k3.3 + k4.3)).clamp(0.0, 1.0);
             }
         }
 
@@ -524,7 +539,9 @@ impl Neuron for HhNeuron {
         crossed
     }
 
-    fn membrane_potential(&self) -> f32 { self.v }
+    fn membrane_potential(&self) -> f32 {
+        self.v
+    }
 
     fn reset(&mut self) {
         let v0 = self.cfg.v_rest;
@@ -592,7 +609,9 @@ impl Neuron for HhNeuron {
                     other => {
                         return Err(ParamError::OutOfRange {
                             key: key.into(),
-                            reason: format!("unknown integrator '{other}'; expected 'euler' or 'rk4'"),
+                            reason: format!(
+                                "unknown integrator '{other}'; expected 'euler' or 'rk4'"
+                            ),
                         })
                     }
                 };
@@ -722,7 +741,10 @@ mod param_tests {
         // NaN parses as None via serde_json's as_f64, so this surfaces
         // as BadType, not OutOfRange. Both are acceptable from a
         // safety standpoint — the state never enters the engine.
-        assert!(matches!(err, ParamError::BadType { .. } | ParamError::OutOfRange { .. }));
+        assert!(matches!(
+            err,
+            ParamError::BadType { .. } | ParamError::OutOfRange { .. }
+        ));
     }
 
     #[test]

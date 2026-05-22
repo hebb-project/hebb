@@ -43,22 +43,46 @@ pub struct IzhikevichConfig {
 impl IzhikevichConfig {
     /// Regular-spiking cortical excitatory neuron.
     pub fn regular_spiking() -> Self {
-        Self { a: 0.02, b: 0.2, c: -65.0, d: 8.0, v_peak: 30.0 }
+        Self {
+            a: 0.02,
+            b: 0.2,
+            c: -65.0,
+            d: 8.0,
+            v_peak: 30.0,
+        }
     }
 
     /// Fast-spiking inhibitory interneuron.
     pub fn fast_spiking() -> Self {
-        Self { a: 0.1, b: 0.2, c: -65.0, d: 2.0, v_peak: 30.0 }
+        Self {
+            a: 0.1,
+            b: 0.2,
+            c: -65.0,
+            d: 2.0,
+            v_peak: 30.0,
+        }
     }
 
     /// Intrinsically-bursting excitatory neuron.
     pub fn intrinsically_bursting() -> Self {
-        Self { a: 0.02, b: 0.2, c: -55.0, d: 4.0, v_peak: 30.0 }
+        Self {
+            a: 0.02,
+            b: 0.2,
+            c: -55.0,
+            d: 4.0,
+            v_peak: 30.0,
+        }
     }
 
     /// Chattering excitatory neuron.
     pub fn chattering() -> Self {
-        Self { a: 0.02, b: 0.2, c: -50.0, d: 2.0, v_peak: 30.0 }
+        Self {
+            a: 0.02,
+            b: 0.2,
+            c: -50.0,
+            d: 2.0,
+            v_peak: 30.0,
+        }
     }
 
     pub fn for_behavior(behavior: IzhikevichBehavior) -> Self {
@@ -72,7 +96,9 @@ impl IzhikevichConfig {
 }
 
 impl Default for IzhikevichConfig {
-    fn default() -> Self { Self::regular_spiking() }
+    fn default() -> Self {
+        Self::regular_spiking()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,12 +120,20 @@ impl IzhikevichNeuron {
 
     pub fn with_config(id: Uuid, config: IzhikevichConfig) -> Self {
         let v = -65.0;
-        Self { id, v, u: config.b * v, last_v: v, config }
+        Self {
+            id,
+            v,
+            u: config.b * v,
+            last_v: v,
+            config,
+        }
     }
 }
 
 impl Neuron for IzhikevichNeuron {
-    fn node_id(&self) -> Uuid { self.id }
+    fn node_id(&self) -> Uuid {
+        self.id
+    }
 
     fn tick(&mut self, input_current: f32, ctx: &NeuronTickCtx) -> bool {
         let dt = ctx.dt_ms;
@@ -118,7 +152,9 @@ impl Neuron for IzhikevichNeuron {
         false
     }
 
-    fn membrane_potential(&self) -> f32 { self.v }
+    fn membrane_potential(&self) -> f32 {
+        self.v
+    }
 
     fn reset(&mut self) {
         self.v = -65.0;

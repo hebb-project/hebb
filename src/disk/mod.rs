@@ -53,7 +53,11 @@ pub enum DiskError {
     /// The configured byte limit was exceeded *before* parsing — we
     /// never allocate a multi-gigabyte buffer for an attacker-supplied
     /// topology file.
-    TopologyTooLarge { path: PathBuf, bytes: u64, limit: u64 },
+    TopologyTooLarge {
+        path: PathBuf,
+        bytes: u64,
+        limit: u64,
+    },
 }
 
 impl std::fmt::Display for DiskError {
@@ -170,12 +174,18 @@ pub fn topology_path(cortex_root: &Path) -> PathBuf {
 
 /// Canonical relative path to `weights/{type}/latest.cwt`.
 pub fn weights_path(cortex_root: &Path, cortex_type: &str) -> PathBuf {
-    cortex_root.join("weights").join(cortex_type).join("latest.cwt")
+    cortex_root
+        .join("weights")
+        .join(cortex_type)
+        .join("latest.cwt")
 }
 
 /// Canonical relative path to `state/{type}/latest.json`.
 pub fn state_path(cortex_root: &Path, cortex_type: &str) -> PathBuf {
-    cortex_root.join("state").join(cortex_type).join("latest.json")
+    cortex_root
+        .join("state")
+        .join(cortex_type)
+        .join("latest.json")
 }
 
 /// Read the metadata file. Tolerates v1 files via the format-layer
@@ -286,11 +296,7 @@ pub fn read_state(cortex_root: &Path, cortex_type: &str) -> Result<Option<StateF
     Ok(Some(StateFile::from_json_bytes(&bytes)?))
 }
 
-pub fn write_state(
-    cortex_root: &Path,
-    cortex_type: &str,
-    s: &StateFile,
-) -> Result<(), DiskError> {
+pub fn write_state(cortex_root: &Path, cortex_type: &str, s: &StateFile) -> Result<(), DiskError> {
     let bytes = s.to_json_bytes()?;
     write_atomic(&state_path(cortex_root, cortex_type), &bytes)
 }

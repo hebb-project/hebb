@@ -69,12 +69,20 @@ impl AdExNeuron {
 
     pub fn with_config(id: Uuid, config: AdExConfig) -> Self {
         let v = config.e_l;
-        Self { id, v, w: 0.0, last_v: v, config }
+        Self {
+            id,
+            v,
+            w: 0.0,
+            last_v: v,
+            config,
+        }
     }
 }
 
 impl Neuron for AdExNeuron {
-    fn node_id(&self) -> Uuid { self.id }
+    fn node_id(&self) -> Uuid {
+        self.id
+    }
 
     fn tick(&mut self, input_current: f32, ctx: &NeuronTickCtx) -> bool {
         let dt = ctx.dt_ms;
@@ -103,7 +111,9 @@ impl Neuron for AdExNeuron {
         false
     }
 
-    fn membrane_potential(&self) -> f32 { self.v }
+    fn membrane_potential(&self) -> f32 {
+        self.v
+    }
 
     fn reset(&mut self) {
         self.v = self.config.e_l;

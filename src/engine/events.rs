@@ -49,9 +49,19 @@ pub struct WeightFrame {
 
 impl WeightFrame {
     pub fn delta(t_ms: f64, deltas: Vec<WeightDelta>) -> Self {
-        Self { v: 1, t_ms, full: false, deltas }
+        Self {
+            v: 1,
+            t_ms,
+            full: false,
+            deltas,
+        }
     }
     pub fn snapshot(t_ms: f64, deltas: Vec<WeightDelta>) -> Self {
-        Self { v: 1, t_ms, full: true, deltas }
+        Self {
+            v: 1,
+            t_ms,
+            full: true,
+            deltas,
+        }
     }
 }

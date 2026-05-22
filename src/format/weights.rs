@@ -70,7 +70,9 @@ impl WeightsFile {
     }
 
     pub fn with_capacity(n: usize) -> Self {
-        Self { records: Vec::with_capacity(n) }
+        Self {
+            records: Vec::with_capacity(n),
+        }
     }
 
     /// Decode from a complete byte buffer. Fully validating.
@@ -129,8 +131,7 @@ impl WeightsFile {
     /// responsible for writing it atomically to disk.
     pub fn to_bytes(&self) -> Result<Vec<u8>, WeightsError> {
         let n = self.records.len();
-        let mut buf =
-            Vec::with_capacity(WEIGHTS_HEADER_SIZE + n * WEIGHTS_RECORD_SIZE as usize);
+        let mut buf = Vec::with_capacity(WEIGHTS_HEADER_SIZE + n * WEIGHTS_RECORD_SIZE as usize);
         buf.extend_from_slice(WEIGHTS_MAGIC);
         buf.extend_from_slice(&WEIGHTS_VERSION.to_le_bytes());
         buf.extend_from_slice(&(n as u64).to_le_bytes());
@@ -138,7 +139,10 @@ impl WeightsFile {
         buf.extend_from_slice(&0u32.to_le_bytes());
         for (i, r) in self.records.iter().enumerate() {
             if !r.weight.is_finite() {
-                return Err(WeightsError::NonFiniteWeight { index: i, weight: r.weight });
+                return Err(WeightsError::NonFiniteWeight {
+                    index: i,
+                    weight: r.weight,
+                });
             }
             buf.extend_from_slice(r.edge_id.as_bytes());
             buf.extend_from_slice(&r.weight.to_le_bytes());
@@ -188,7 +192,10 @@ impl WeightsFile {
             let edge_id = Uuid::from_bytes(id_bytes);
             let weight = f32::from_le_bytes(w_bytes);
             if !weight.is_finite() {
-                return Err(WeightsError::NonFiniteWeight { index: i as usize, weight });
+                return Err(WeightsError::NonFiniteWeight {
+                    index: i as usize,
+                    weight,
+                });
             }
             records.push(WeightRecord { edge_id, weight });
         }
@@ -200,7 +207,10 @@ impl WeightsFile {
     pub fn write_streaming<W: Write>(&self, mut w: W) -> Result<(), WeightsError> {
         for (i, r) in self.records.iter().enumerate() {
             if !r.weight.is_finite() {
-                return Err(WeightsError::NonFiniteWeight { index: i, weight: r.weight });
+                return Err(WeightsError::NonFiniteWeight {
+                    index: i,
+                    weight: r.weight,
+                });
             }
         }
         w.write_all(WEIGHTS_MAGIC).map_err(WeightsError::Io)?;
@@ -212,8 +222,10 @@ impl WeightsFile {
             .map_err(WeightsError::Io)?;
         w.write_all(&0u32.to_le_bytes()).map_err(WeightsError::Io)?;
         for r in &self.records {
-            w.write_all(r.edge_id.as_bytes()).map_err(WeightsError::Io)?;
-            w.write_all(&r.weight.to_le_bytes()).map_err(WeightsError::Io)?;
+            w.write_all(r.edge_id.as_bytes())
+                .map_err(WeightsError::Io)?;
+            w.write_all(&r.weight.to_le_bytes())
+                .map_err(WeightsError::Io)?;
         }
         Ok(())
     }

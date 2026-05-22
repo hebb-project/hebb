@@ -45,7 +45,9 @@ impl StateFile {
 
     pub fn validate(&self) -> Result<(), StateError> {
         if self.format != STATE_FORMAT {
-            return Err(StateError::WrongFormat { found: self.format.clone() });
+            return Err(StateError::WrongFormat {
+                found: self.format.clone(),
+            });
         }
         if self.version == 0 || self.version > STATE_VERSION {
             return Err(StateError::UnsupportedVersion {
@@ -116,7 +118,10 @@ mod tests {
     fn rejects_wrong_format() {
         let mut s = StateFile::empty("hh");
         s.format = "cortex.notstate".into();
-        assert!(matches!(s.validate().unwrap_err(), StateError::WrongFormat { .. }));
+        assert!(matches!(
+            s.validate().unwrap_err(),
+            StateError::WrongFormat { .. }
+        ));
     }
 
     #[test]

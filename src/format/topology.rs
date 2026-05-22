@@ -46,11 +46,17 @@ pub struct NeuronSpec {
 
 impl NeuronSpec {
     pub fn lif() -> Self {
-        Self { kind: "lif".into(), config: None }
+        Self {
+            kind: "lif".into(),
+            config: None,
+        }
     }
 
     pub fn hh(config: Option<serde_json::Value>) -> Self {
-        Self { kind: "hh".into(), config }
+        Self {
+            kind: "hh".into(),
+            config,
+        }
     }
 }
 
@@ -63,7 +69,10 @@ pub struct SynapseSpec {
 
 impl SynapseSpec {
     pub fn stdp() -> Self {
-        Self { kind: "stdp".into(), config: None }
+        Self {
+            kind: "stdp".into(),
+            config: None,
+        }
     }
 }
 
@@ -110,7 +119,9 @@ pub struct TopologyEdge {
     pub metadata: serde_json::Value,
 }
 
-fn default_delay_ms() -> f32 { 1.0 }
+fn default_delay_ms() -> f32 {
+    1.0
+}
 
 fn empty_object() -> serde_json::Value {
     serde_json::Value::Object(Default::default())
@@ -188,7 +199,9 @@ impl TopologyFile {
     ///   - delay_ms ≥ 0.0, finite
     pub fn validate(&self) -> Result<(), TopologyError> {
         if self.format != TOPOLOGY_FORMAT {
-            return Err(TopologyError::WrongFormat { found: self.format.clone() });
+            return Err(TopologyError::WrongFormat {
+                found: self.format.clone(),
+            });
         }
         if self.version == 0 || self.version > TOPOLOGY_VERSION {
             return Err(TopologyError::UnsupportedVersion {
@@ -200,10 +213,14 @@ impl TopologyFile {
             return Err(TopologyError::InvalidCortexType(self.cortex_type.clone()));
         }
         if !is_valid_kebab(&self.defaults.neuron.kind) {
-            return Err(TopologyError::InvalidNeuronKind(self.defaults.neuron.kind.clone()));
+            return Err(TopologyError::InvalidNeuronKind(
+                self.defaults.neuron.kind.clone(),
+            ));
         }
         if !is_valid_kebab(&self.defaults.synapse.kind) {
-            return Err(TopologyError::InvalidSynapseKind(self.defaults.synapse.kind.clone()));
+            return Err(TopologyError::InvalidSynapseKind(
+                self.defaults.synapse.kind.clone(),
+            ));
         }
 
         // Node IDs unique.
@@ -231,18 +248,33 @@ impl TopologyFile {
                 return Err(TopologyError::SelfLoop(e.id));
             }
             if !node_ids.contains(&e.pre) {
-                return Err(TopologyError::DanglingEdge { edge: e.id, missing_node: e.pre });
+                return Err(TopologyError::DanglingEdge {
+                    edge: e.id,
+                    missing_node: e.pre,
+                });
             }
             if !node_ids.contains(&e.post) {
-                return Err(TopologyError::DanglingEdge { edge: e.id, missing_node: e.post });
+                return Err(TopologyError::DanglingEdge {
+                    edge: e.id,
+                    missing_node: e.post,
+                });
             }
             if !e.init_weight.is_finite() || e.init_weight < 0.0 || e.init_weight > 1.0 {
-                return Err(TopologyError::BadWeight { edge: e.id, weight: e.init_weight });
+                return Err(TopologyError::BadWeight {
+                    edge: e.id,
+                    weight: e.init_weight,
+                });
             }
             if !e.delay_ms.is_finite() || e.delay_ms < 0.0 {
-                return Err(TopologyError::BadDelay { edge: e.id, delay_ms: e.delay_ms });
+                return Err(TopologyError::BadDelay {
+                    edge: e.id,
+                    delay_ms: e.delay_ms,
+                });
             }
-            let kind = e.kind.as_ref().map(|k| k.kind.clone())
+            let kind = e
+                .kind
+                .as_ref()
+                .map(|k| k.kind.clone())
                 .unwrap_or_else(|| self.defaults.synapse.kind.clone());
             if let Some(k) = &e.kind {
                 if !is_valid_kebab(&k.kind) {
@@ -279,7 +311,9 @@ fn is_valid_kebab(s: &str) -> bool {
     if bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
         return false;
     }
-    bytes.iter().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-'))
+    bytes
+        .iter()
+        .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-'))
 }
 
 /// Errors a topology file can produce. Stable, machine-parseable
@@ -315,10 +349,9 @@ impl std::fmt::Display for TopologyError {
                 f,
                 "topology format tag '{found}' is not '{TOPOLOGY_FORMAT}'"
             ),
-            Self::UnsupportedVersion { found, max } => write!(
-                f,
-                "topology version {found} is not supported (max {max})"
-            ),
+            Self::UnsupportedVersion { found, max } => {
+                write!(f, "topology version {found} is not supported (max {max})")
+            }
             Self::InvalidCortexType(s) => {
                 write!(f, "cortex_type '{s}' is not a valid kebab-case slug")
             }
@@ -334,10 +367,9 @@ impl std::fmt::Display for TopologyError {
                 f,
                 "edge {id} duplicates an existing (pre, post, kind) triple"
             ),
-            Self::DanglingEdge { edge, missing_node } => write!(
-                f,
-                "edge {edge} references missing node {missing_node}"
-            ),
+            Self::DanglingEdge { edge, missing_node } => {
+                write!(f, "edge {edge} references missing node {missing_node}")
+            }
             Self::SelfLoop(id) => write!(f, "edge {id} is a self-loop (pre == post)"),
             Self::BadWeight { edge, weight } => write!(
                 f,

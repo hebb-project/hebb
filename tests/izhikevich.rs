@@ -9,7 +9,11 @@ fn spike_times(cfg: IzhikevichConfig, current: f32, dt_ms: f32, total_ms: f32) -
     let mut t = 0.0_f32;
     let mut t_ms = 0.0_f64;
     while t < total_ms {
-        let ctx = NeuronTickCtx { dt_ms, t_ms, modulator: 0.0 };
+        let ctx = NeuronTickCtx {
+            dt_ms,
+            t_ms,
+            modulator: 0.0,
+        };
         if n.tick(current, &ctx) {
             spikes.push(t);
         }
@@ -22,11 +26,22 @@ fn spike_times(cfg: IzhikevichConfig, current: f32, dt_ms: f32, total_ms: f32) -
 #[test]
 fn izhikevich_regular_spiking_fires_under_supra_threshold() {
     let spikes = spike_times(IzhikevichConfig::regular_spiking(), 10.0, 0.5, 200.0);
-    assert!(spikes.len() >= 3, "expected regular spiking under drive, got {}", spikes.len());
-    assert!(spikes.len() <= 20, "regular-spiking count suspiciously high: {}", spikes.len());
+    assert!(
+        spikes.len() >= 3,
+        "expected regular spiking under drive, got {}",
+        spikes.len()
+    );
+    assert!(
+        spikes.len() <= 20,
+        "regular-spiking count suspiciously high: {}",
+        spikes.len()
+    );
 
     let isi: Vec<f32> = spikes.windows(2).map(|w| w[1] - w[0]).collect();
-    assert!(isi.iter().all(|gap| *gap > 5.0), "regular-spiking ISIs should be separated: {isi:?}");
+    assert!(
+        isi.iter().all(|gap| *gap > 5.0),
+        "regular-spiking ISIs should be separated: {isi:?}"
+    );
 }
 
 #[test]
@@ -64,5 +79,8 @@ fn izhikevich_plugs_into_sim_engine_via_kind() {
         spikes_total += frame.events.iter().filter(|e| e.node_id == id).count();
         elapsed += 0.5;
     }
-    assert!(spikes_total > 0, "Izhikevich neuron should spike through SimEngine");
+    assert!(
+        spikes_total > 0,
+        "Izhikevich neuron should spike through SimEngine"
+    );
 }

@@ -7,7 +7,11 @@ fn spike_times(cfg: AdExConfig, current: f32, dt_ms: f32, total_ms: f32) -> Vec<
     let mut t = 0.0_f32;
     let mut t_ms = 0.0_f64;
     while t < total_ms {
-        let ctx = NeuronTickCtx { dt_ms, t_ms, modulator: 0.0 };
+        let ctx = NeuronTickCtx {
+            dt_ms,
+            t_ms,
+            modulator: 0.0,
+        };
         if n.tick(current, &ctx) {
             spikes.push(t);
         }
@@ -20,14 +24,26 @@ fn spike_times(cfg: AdExConfig, current: f32, dt_ms: f32, total_ms: f32) -> Vec<
 #[test]
 fn adex_fires_under_supra_threshold() {
     let spikes = spike_times(AdExConfig::default(), 500.0, 0.1, 200.0);
-    assert!(spikes.len() >= 2, "expected AdEx spikes under sustained drive, got {}", spikes.len());
-    assert!(spikes.len() <= 40, "AdEx spike count suspiciously high: {}", spikes.len());
+    assert!(
+        spikes.len() >= 2,
+        "expected AdEx spikes under sustained drive, got {}",
+        spikes.len()
+    );
+    assert!(
+        spikes.len() <= 40,
+        "AdEx spike count suspiciously high: {}",
+        spikes.len()
+    );
 }
 
 #[test]
 fn adex_adaptation_reduces_late_spike_rate() {
     let spikes = spike_times(AdExConfig::default(), 500.0, 0.1, 600.0);
-    assert!(spikes.len() >= 5, "need enough spikes to measure adaptation, got {}", spikes.len());
+    assert!(
+        spikes.len() >= 5,
+        "need enough spikes to measure adaptation, got {}",
+        spikes.len()
+    );
 
     let first_isi = spikes[1] - spikes[0];
     let last_isi = spikes[spikes.len() - 1] - spikes[spikes.len() - 2];
@@ -57,5 +73,8 @@ fn adex_plugs_into_sim_engine_via_kind() {
         spikes_total += frame.events.iter().filter(|e| e.node_id == id).count();
         elapsed += 0.1;
     }
-    assert!(spikes_total > 0, "AdEx neuron should spike through SimEngine");
+    assert!(
+        spikes_total > 0,
+        "AdEx neuron should spike through SimEngine"
+    );
 }

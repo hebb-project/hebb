@@ -110,7 +110,11 @@ impl Cortex {
             )));
         }
 
-        Ok(Self { root, metadata, topology })
+        Ok(Self {
+            root,
+            metadata,
+            topology,
+        })
     }
 
     /// Create a brand-new `.cortex/` folder at `root`. Errors if the
@@ -158,7 +162,11 @@ impl Cortex {
         write_metadata(&root, &metadata)?;
         write_topology(&root, &topology)?;
 
-        Ok(Self { root, metadata, topology })
+        Ok(Self {
+            root,
+            metadata,
+            topology,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -271,7 +279,8 @@ impl Cortex {
                 id: n.id,
                 label: n.label,
                 kind: n.kind,
-                metadata: if matches!(n.metadata, serde_json::Value::Object(ref m) if m.is_empty()) {
+                metadata: if matches!(n.metadata, serde_json::Value::Object(ref m) if m.is_empty())
+                {
                     empty_object()
                 } else {
                     n.metadata
@@ -300,7 +309,10 @@ impl Cortex {
 
         let added_nodes = self.topology.nodes.len() - nodes_before;
         let added_edges = self.topology.edges.len() - edges_before;
-        Ok(SeedReport { added_nodes, added_edges })
+        Ok(SeedReport {
+            added_nodes,
+            added_edges,
+        })
     }
 
     /// Save metadata + topology to disk. Most edits already persist on
@@ -322,7 +334,11 @@ impl Cortex {
     }
 
     /// Rename the network. Updates `updated_at` and persists.
-    pub fn rename(&mut self, new_name: impl Into<String>, now_rfc3339: impl Into<String>) -> Result<(), DiskError> {
+    pub fn rename(
+        &mut self,
+        new_name: impl Into<String>,
+        now_rfc3339: impl Into<String>,
+    ) -> Result<(), DiskError> {
         self.metadata.name = new_name.into();
         self.metadata.updated_at = now_rfc3339.into();
         write_metadata(&self.root, &self.metadata)?;
@@ -356,7 +372,10 @@ impl Cortex {
     }
 
     /// Persist a state snapshot to `state/{type}/latest.json`.
-    pub fn persist_state(&self, neurons: impl IntoIterator<Item = (Uuid, serde_json::Value)>) -> Result<(), DiskError> {
+    pub fn persist_state(
+        &self,
+        neurons: impl IntoIterator<Item = (Uuid, serde_json::Value)>,
+    ) -> Result<(), DiskError> {
         let mut s = StateFile::empty(&self.metadata.cortex_type);
         for (id, val) in neurons {
             s.neurons.insert(id, val);
@@ -516,8 +535,18 @@ mod tests {
     fn add_neuron_and_synapse_persist() {
         let root = tmp_root("addn");
         let mut c = hh_create(&root);
-        let a = c.add_neuron(AddNeuron { label: "input".into(), ..Default::default() }).unwrap();
-        let b = c.add_neuron(AddNeuron { label: "hidden".into(), ..Default::default() }).unwrap();
+        let a = c
+            .add_neuron(AddNeuron {
+                label: "input".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let b = c
+            .add_neuron(AddNeuron {
+                label: "hidden".into(),
+                ..Default::default()
+            })
+            .unwrap();
         let e = c
             .add_synapse(AddSynapse {
                 id: None,
@@ -557,7 +586,10 @@ mod tests {
                 metadata: None,
             })
             .unwrap_err();
-        assert!(matches!(err, DiskError::Topology(TopologyError::DanglingEdge { .. })));
+        assert!(matches!(
+            err,
+            DiskError::Topology(TopologyError::DanglingEdge { .. })
+        ));
         // The in-memory state must have rolled back — the edge isn't there.
         assert!(c.topology().edges.is_empty());
         fs::remove_dir_all(&root).ok();
@@ -684,7 +716,7 @@ mod tests {
 
     #[test]
     fn apply_seed_rolls_back_on_validation_failure() {
-        use crate::seeds::{SeedEdge, SeedNode, Seed};
+        use crate::seeds::{Seed, SeedEdge, SeedNode};
         let root = tmp_root("seedrollback");
         let mut c = hh_create(&root);
         let a = c.add_neuron(AddNeuron::default()).unwrap();
@@ -709,7 +741,10 @@ mod tests {
             }],
         };
         let err = c.apply_seed(bad).unwrap_err();
-        assert!(matches!(err, DiskError::Topology(TopologyError::DanglingEdge { .. })));
+        assert!(matches!(
+            err,
+            DiskError::Topology(TopologyError::DanglingEdge { .. })
+        ));
         // Rollback: only the original neuron remains.
         assert_eq!(c.topology().nodes.len(), 1);
         assert_eq!(c.topology().edges.len(), 0);
