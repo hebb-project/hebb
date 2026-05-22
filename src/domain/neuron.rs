@@ -368,6 +368,7 @@ impl Default for HhIntegrator {
 /// the HK1952 squid-axon values, which match the canonical equation
 /// captured in the vault (see `ideas/brain-architecture-reference.md`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HhConfig {
     /// Membrane capacitance (µF/cm²).
     pub c_m: f32,
