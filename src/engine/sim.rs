@@ -245,6 +245,60 @@ impl SimEngine {
         self.neurons.keys().copied().collect()
     }
 
+    /// Snapshot every neuron's full dynamic state via
+    /// [`crate::domain::Neuron::serialize_state`]. Drives the
+    /// `state/{type}/latest.json` writer in `core` and the analogous
+    /// PyO3 surface. The returned values are per-impl JSON objects —
+    /// the disk layer treats them opaquely.
+    pub fn snapshot_neuron_state(&self) -> Vec<(Uuid, serde_json::Value)> {
+        self.neurons
+            .iter()
+            .map(|(id, n)| (*id, n.serialize_state()))
+            .collect()
+    }
+
+    /// Overlay a previously-persisted state value onto a single neuron.
+    /// Iterates `state`'s object fields and calls
+    /// [`crate::domain::Neuron::set_param`] for each. Unknown keys are
+    /// silently skipped — this is the forward-compat seam that lets an
+    /// older runtime load a state file produced by a newer impl that
+    /// has extra fields. Type / range failures still hard-error since
+    /// those mean corruption, not version drift.
+    ///
+    /// Returns `Ok(skipped_unknown)`: the number of keys the impl did
+    /// not recognize. Useful for logging "loaded state, ignored N
+    /// unknown fields" without forcing every caller to count manually.
+    pub fn restore_neuron_state(
+        &mut self,
+        id: Uuid,
+        state: &serde_json::Value,
+    ) -> Result<usize, crate::domain::ParamError> {
+        let neuron =
+            self.neurons
+                .get_mut(&id)
+                .ok_or_else(|| crate::domain::ParamError::Unknown {
+                    key: format!("node {id} (not in engine)"),
+                })?;
+        let obj = match state {
+            serde_json::Value::Object(m) => m,
+            _ => {
+                return Err(crate::domain::ParamError::BadType {
+                    key: format!("state for node {id}"),
+                    want: "object",
+                })
+            }
+        };
+        let mut skipped = 0usize;
+        for (k, v) in obj {
+            match neuron.set_param(k, v) {
+                Ok(_) => {}
+                Err(crate::domain::ParamError::Unknown { .. }) => skipped += 1,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(skipped)
+    }
+
     /// Return the introspectable parameters for a synapse by edge ID,
     /// or `None` if it isn't in the engine. Matches `Synapse::params`.
     pub fn synapse_params(&self, edge_id: Uuid) -> Option<serde_json::Value> {
