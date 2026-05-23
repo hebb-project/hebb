@@ -13,6 +13,7 @@ fn spike_times(cfg: IzhikevichConfig, current: f32, dt_ms: f32, total_ms: f32) -
             dt_ms,
             t_ms,
             modulator: 0.0,
+            neuromodulators: Default::default(),
         };
         if n.tick(current, &ctx) {
             spikes.push(t);

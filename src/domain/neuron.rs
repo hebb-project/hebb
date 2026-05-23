@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::domain::neuron_adex::AdExConfig;
 use crate::domain::neuron_izhikevich::IzhikevichConfig;
+use crate::engine::NeuromodulatorState;
 
 /// Which concrete neuron model a caller wants the engine to instantiate.
 ///
@@ -53,7 +54,14 @@ pub struct NeuronTickCtx {
     pub t_ms: f64,
     /// Diffuse neuromodulator level (e.g. dopamine analog). 0 = baseline.
     /// LIF ignores; future impls can scale intrinsic excitability with it.
+    /// Retained for backward compatibility; mirrors
+    /// `neuromodulators.dopamine`.
     pub modulator: f32,
+    /// Full global neuromodulator snapshot for this tick. The engine hands
+    /// every neuron the same value within a tick. LIF/HH ignore it for now;
+    /// it exists so future excitability-modulating impls slot in without a
+    /// trait change. See [[ideas/neuromodulator-bus]].
+    pub neuromodulators: NeuromodulatorState,
 }
 
 pub trait Neuron: Send + Sync + 'static {

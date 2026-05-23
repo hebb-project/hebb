@@ -11,6 +11,7 @@ fn spike_times(cfg: AdExConfig, current: f32, dt_ms: f32, total_ms: f32) -> Vec<
             dt_ms,
             t_ms,
             modulator: 0.0,
+            neuromodulators: Default::default(),
         };
         if n.tick(current, &ctx) {
             spikes.push(t);

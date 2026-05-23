@@ -21,6 +21,7 @@ fn count_spikes(cfg: HhConfig, i_ext: f32, dt_ms: f32, total_ms: f32) -> (usize,
             dt_ms,
             t_ms,
             modulator: 0.0,
+            neuromodulators: Default::default(),
         };
         if n.tick(i_ext, &ctx) {
             spikes += 1;

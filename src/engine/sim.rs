@@ -15,6 +15,7 @@ use crate::domain::{
     StdpSynapse, Synapse, SynapseCtx,
 };
 use crate::engine::events::{SpikeEvent, SpikeFrame};
+use crate::engine::neuromod::{Channel, NeuromodulatorState, Pulse};
 
 pub struct SimEngine {
     pub neurons: HashMap<Uuid, Box<dyn Neuron>>,
@@ -28,7 +29,17 @@ pub struct SimEngine {
     /// Active external stimulations: node → (current, ms_remaining).
     pub stim: HashMap<Uuid, (f32, f32)>,
     pub t_ms: f64,
+    /// Legacy single-scalar modulator. Kept as a backward-compatible mirror
+    /// of the dopamine baseline; new code should use the typed bus
+    /// (`neuromod` + `pulses`). See [[ideas/neuromodulator-bus]].
     pub modulator: f32,
+    /// Baseline level of the global neuromodulator bus. `set_neuromodulators`
+    /// writes this; pulses add on top of it without overwriting it.
+    pub neuromod: NeuromodulatorState,
+    /// In-flight modulator pulses, decayed toward zero each tick. The
+    /// effective bus state broadcast to contexts is `neuromod` plus the
+    /// sum of active pulse contributions per channel.
+    pub pulses: Vec<Pulse>,
 }
 
 impl SimEngine {
@@ -42,6 +53,8 @@ impl SimEngine {
             stim: HashMap::new(),
             t_ms: 0.0,
             modulator: 0.0,
+            neuromod: NeuromodulatorState::default(),
+            pulses: Vec::new(),
         }
     }
 
@@ -134,10 +147,60 @@ impl SimEngine {
         self.stim.insert(node_id, (current, duration_ms));
     }
 
+    // ─── Neuromodulator bus (Layer 3a) ────────────────────────────────────
+    //
+    // The engine owns a single global bus value. `neuromod` is the baseline;
+    // active `pulses` add transient contributions that decay toward it. The
+    // effective state — baseline + summed live pulses — is what the
+    // per-tick snapshot broadcasts. See [[ideas/neuromodulator-bus]].
+
+    /// Current effective neuromodulator state: baseline plus the sum of all
+    /// active pulse contributions. This is the value the most recent tick
+    /// snapshotted and handed to every context.
+    pub fn neuromodulators(&self) -> NeuromodulatorState {
+        let mut state = self.neuromod;
+        for p in &self.pulses {
+            *state.get_mut(p.channel) += p.contribution;
+        }
+        state
+    }
+
+    /// Overwrite the bus *baseline*. Does not clear in-flight pulses — a
+    /// pulse rides on top of whatever baseline is current when it is read.
+    pub fn set_neuromodulators(&mut self, state: NeuromodulatorState) {
+        self.neuromod = state;
+        self.modulator = state.dopamine;
+    }
+
+    /// Inject a transient pulse: add `value` to `channel` now and decay that
+    /// contribution exponentially toward baseline with time constant
+    /// `decay_ms`. The engine decays active pulses at the start of each tick,
+    /// so callers do not hand-schedule decay. A non-positive `value` is a
+    /// no-op; a non-positive `decay_ms` makes the pulse last a single tick.
+    pub fn pulse_neuromodulator(&mut self, channel: Channel, value: f32, decay_ms: f32) {
+        if value == 0.0 {
+            return;
+        }
+        self.pulses.push(Pulse {
+            channel,
+            contribution: value,
+            decay_ms,
+        });
+    }
+
     /// Run one simulation tick of `dt_ms`. Returns the spike frame to
     /// broadcast (possibly with an empty events vec).
     pub fn tick(&mut self, dt_ms: f32) -> SpikeFrame {
         self.t_ms += dt_ms as f64;
+
+        // 0. Neuromodulator bus: decay active pulses toward baseline, then
+        //    snapshot the effective bus state ONCE for this tick. Every
+        //    neuron and synapse context below sees this same snapshot, so
+        //    update order is never observable. See [[ideas/neuromodulator-bus]].
+        self.pulses.retain_mut(|p| p.decay(dt_ms));
+        let neuromods = self.neuromodulators();
+        // Keep the legacy scalar in sync with the dopamine channel.
+        self.modulator = neuromods.dopamine;
 
         // 1. Decrement active stimulations.
         self.stim.retain(|_, (_, ms_left)| {
@@ -162,11 +225,14 @@ impl SimEngine {
             }
         }
 
-        // 3. Tick each neuron, collect spikes.
+        // 3. Tick each neuron, collect spikes. The same per-tick snapshot is
+        //    handed to every neuron; LIF/HH ignore it for now (no broad
+        //    excitability refactor — see [[ideas/neuromodulator-bus]]).
         let ctx = NeuronTickCtx {
             dt_ms,
             t_ms: self.t_ms,
-            modulator: self.modulator,
+            modulator: neuromods.dopamine,
+            neuromodulators: neuromods,
         };
         let mut fired_now: HashSet<Uuid> = HashSet::new();
         let mut events: Vec<SpikeEvent> = Vec::new();
@@ -189,7 +255,8 @@ impl SimEngine {
                 t_ms: self.t_ms,
                 pre_fired: fired_now.contains(&syn.pre_id()),
                 post_fired: fired_now.contains(&syn.post_id()),
-                modulator: self.modulator,
+                modulator: neuromods.dopamine,
+                neuromodulators: neuromods,
             };
             syn.update(&s_ctx);
         }

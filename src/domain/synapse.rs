@@ -1,14 +1,16 @@
 //! Synapse trait + spike-timing-dependent plasticity reference impl.
 //!
-//! `SynapseCtx` is wider than M0 STDP needs: it carries `modulator` and
-//! eligibility-trace fields so three-factor / dopaminergic rules slot in
-//! without changing the trait. See [[concepts/spiking-neural-networks]]
-//! and [[ideas/active-inference-knob]] in the vault for why.
+//! `SynapseCtx` is wider than M0 STDP needs: it carries the full
+//! neuromodulator snapshot and eligibility-trace fields so three-factor /
+//! dopaminergic rules slot in without changing the trait. See
+//! [[concepts/spiking-neural-networks]], [[ideas/active-inference-knob]],
+//! and [[ideas/neuromodulator-bus]] in the vault for why.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::ParamError;
+use crate::engine::NeuromodulatorState;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SynapseCtx {
@@ -18,8 +20,15 @@ pub struct SynapseCtx {
     pub pre_fired: bool,
     /// Did the post-synaptic neuron fire on the current tick?
     pub post_fired: bool,
-    /// Neuromodulator level. Two-factor rules ignore.
+    /// Single global-bus neuromodulator level. Retained for backward
+    /// compatibility with two-factor consumers and tests; mirrors
+    /// `neuromodulators.dopamine`. Prefer reading `neuromodulators`.
     pub modulator: f32,
+    /// The global neuromodulator snapshot for this tick. Every synapse in
+    /// one tick sees the same value — update order is not observable. The
+    /// first real consumer is `PlasticSynapse` (Layer 2); two-factor STDP
+    /// ignores it. See [[ideas/neuromodulator-bus]].
+    pub neuromodulators: NeuromodulatorState,
 }
 
 pub trait Synapse: Send + Sync + 'static {
