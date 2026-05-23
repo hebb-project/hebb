@@ -60,4 +60,7 @@ pub use domain::{
     IzhikevichNeuron, LifNeuron, ManualStimulator, Neuron, NeuronKind, NeuronTickCtx, ParamError,
     StdpSynapse, StimInput, Stimulator, Synapse, SynapseCtx,
 };
-pub use engine::{SimEngine, SpikeEvent, SpikeFrame, WeightDelta, WeightFrame};
+pub use engine::{
+    Channel, NeuromodulatorState, Pulse, SimEngine, SpikeEvent, SpikeFrame, WeightDelta,
+    WeightFrame,
+};

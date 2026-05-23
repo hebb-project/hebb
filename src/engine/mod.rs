@@ -8,7 +8,9 @@
 //! standalone binaries, replay tools).
 
 pub mod events;
+pub mod neuromod;
 pub mod sim;
 
 pub use events::{SpikeEvent, SpikeFrame, WeightDelta, WeightFrame};
+pub use neuromod::{Channel, NeuromodulatorState, Pulse};
 pub use sim::SimEngine;
