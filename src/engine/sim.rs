@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::domain::{
-    AdExNeuron, HhNeuron, IzhikevichNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx,
-    StdpSynapse, Synapse, SynapseCtx,
+    AdExNeuron, HhNeuron, IzhikevichNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx, Synapse,
+    SynapseCtx, SynapseKind,
 };
 use crate::engine::events::{SpikeEvent, SpikeFrame};
 use crate::engine::neuromod::{Channel, NeuromodulatorState, Pulse};
@@ -80,7 +80,24 @@ impl SimEngine {
         self.neurons.insert(id, neuron);
     }
 
+    /// Add an STDP edge — the default synapse kind. Kept as the no-arg
+    /// convenience for existing call sites; callers that need a different
+    /// rule use [`Self::add_edge_with_kind`].
     pub fn add_edge(&mut self, edge_id: Uuid, pre: Uuid, post: Uuid, weight: f32) {
+        self.add_edge_with_kind(edge_id, pre, post, weight, &SynapseKind::Stdp);
+    }
+
+    /// Add an edge whose learning rule is selected by `kind`. Concrete
+    /// synapse types are only named at the [`SynapseKind`] factory, so the
+    /// engine keeps holding `Box<dyn Synapse>`.
+    pub fn add_edge_with_kind(
+        &mut self,
+        edge_id: Uuid,
+        pre: Uuid,
+        post: Uuid,
+        weight: f32,
+        kind: &SynapseKind,
+    ) {
         if pre == post {
             return;
         }
@@ -90,9 +107,8 @@ impl SimEngine {
         // Ensure endpoint neurons exist (defensive — DB should guarantee).
         self.add_neuron(pre);
         self.add_neuron(post);
-        let syn: Box<dyn Synapse> = Box::new(StdpSynapse::new(edge_id, pre, post, weight));
         let idx = self.synapses.len();
-        self.synapses.push(syn);
+        self.synapses.push(kind.build(edge_id, pre, post, weight));
         self.fan_in.entry(post).or_default().push(idx);
     }
 

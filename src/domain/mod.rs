@@ -23,6 +23,7 @@ pub mod neuron_adex;
 pub mod neuron_izhikevich;
 pub mod stimulator;
 pub mod synapse;
+pub mod synapse_plastic;
 
 pub use neuron::{
     HhConfig, HhIntegrator, HhNeuron, LifNeuron, Neuron, NeuronKind, NeuronTickCtx, ParamError,
@@ -31,3 +32,4 @@ pub use neuron_adex::{AdExConfig, AdExNeuron};
 pub use neuron_izhikevich::{IzhikevichBehavior, IzhikevichConfig, IzhikevichNeuron};
 pub use stimulator::{ManualStimulator, StimInput, Stimulator};
 pub use synapse::{StdpSynapse, Synapse, SynapseCtx};
+pub use synapse_plastic::{PlasticConfig, PlasticSynapse, SynapseKind};

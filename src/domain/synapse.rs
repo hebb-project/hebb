@@ -218,7 +218,7 @@ impl Synapse for StdpSynapse {
     }
 }
 
-fn require_finite_f32(key: &str, value: &serde_json::Value) -> Result<f32, ParamError> {
+pub(crate) fn require_finite_f32(key: &str, value: &serde_json::Value) -> Result<f32, ParamError> {
     let n = value.as_f64().ok_or_else(|| ParamError::BadType {
         key: key.into(),
         want: "finite number",
@@ -233,7 +233,7 @@ fn require_finite_f32(key: &str, value: &serde_json::Value) -> Result<f32, Param
     Ok(f)
 }
 
-fn require_in_range(
+pub(crate) fn require_in_range(
     key: &str,
     value: &serde_json::Value,
     lo: f32,

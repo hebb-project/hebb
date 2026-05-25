@@ -58,7 +58,8 @@ pub use cortex::{AddNeuron, AddSynapse, Cortex, CreateOptions, SeedReport};
 pub use domain::{
     AdExConfig, AdExNeuron, HhConfig, HhIntegrator, HhNeuron, IzhikevichBehavior, IzhikevichConfig,
     IzhikevichNeuron, LifNeuron, ManualStimulator, Neuron, NeuronKind, NeuronTickCtx, ParamError,
-    StdpSynapse, StimInput, Stimulator, Synapse, SynapseCtx,
+    PlasticConfig, PlasticSynapse, StdpSynapse, StimInput, Stimulator, Synapse, SynapseCtx,
+    SynapseKind,
 };
 pub use engine::{
     Channel, NeuromodulatorState, Pulse, SimEngine, SpikeEvent, SpikeFrame, VoltageFrame,
