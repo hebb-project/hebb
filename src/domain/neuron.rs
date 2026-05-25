@@ -358,17 +358,37 @@ impl Neuron for LifNeuron {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HhIntegrator {
-    /// Forward Euler. Cheapest; needs `dt_ms` ≲ 0.01 for stability on
-    /// canonical HH parameters.
+    /// Forward Euler. Cheapest; stable only for `dt_ms` ≲ 0.01 on
+    /// canonical HH parameters. The HH tick auto-substeps to honor this
+    /// regardless of the caller's `dt`, so picking Euler doesn't crash
+    /// the network — it just multiplies the per-tick cost.
     Euler,
-    /// Classical fourth-order Runge-Kutta. ~4× cost per step but stable
-    /// up to ≈ 0.05 ms on canonical parameters.
+    /// Classical fourth-order Runge-Kutta. ~4× cost per substep but
+    /// stable up to ≈ 0.05 ms, so a 5 ms production tick needs only
+    /// ~100 substeps (vs ~500 for Euler).
     Rk4,
+}
+
+impl HhIntegrator {
+    /// Largest substep this integrator stays stable for on canonical HH
+    /// parameters. The HH tick divides the requested `dt` by this to
+    /// pick a substep count — see [`HhNeuron::tick`].
+    pub fn max_safe_dt_ms(self) -> f32 {
+        match self {
+            Self::Euler => 0.01,
+            Self::Rk4 => 0.05,
+        }
+    }
 }
 
 impl Default for HhIntegrator {
     fn default() -> Self {
-        Self::Euler
+        // RK4 is the safe default: production runs at dt = 5 ms (tick_hz
+        // = 200), so even with internal substepping Euler costs ~5x more
+        // per tick than RK4 to cover the same window. Existing folders
+        // whose metadata pins `"integrator":"euler"` keep working — the
+        // substepping makes Euler safe, just slower.
+        Self::Rk4
     }
 }
 
@@ -418,7 +438,7 @@ impl Default for HhConfig {
             v_rest: -65.0,
             v_spike_thresh: 0.0,
             refractory_ms: 2.0,
-            integrator: HhIntegrator::Euler,
+            integrator: HhIntegrator::Rk4,
         }
     }
 }
@@ -464,34 +484,11 @@ impl HhNeuron {
         }
     }
 
-    /// Derivatives (dV/dt, dm/dt, dh/dt, dn/dt) at a given state + drive.
-    /// Pulled out so RK4 can call it four times per tick.
-    fn derivatives(&self, v: f32, m: f32, h: f32, n: f32, i_ext: f32) -> (f32, f32, f32, f32) {
-        let cfg = &self.cfg;
-        let i_na = cfg.g_na * m.powi(3) * h * (v - cfg.e_na);
-        let i_k = cfg.g_k * n.powi(4) * (v - cfg.e_k);
-        let i_l = cfg.g_l * (v - cfg.e_l);
-        let dv = (i_ext - i_na - i_k - i_l) / cfg.c_m;
-
-        let (am, bm) = (alpha_m(v), beta_m(v));
-        let (ah, bh) = (alpha_h(v), beta_h(v));
-        let (an, bn) = (alpha_n(v), beta_n(v));
-        let dm = am * (1.0 - m) - bm * m;
-        let dh = ah * (1.0 - h) - bh * h;
-        let dn = an * (1.0 - n) - bn * n;
-        (dv, dm, dh, dn)
-    }
-}
-
-impl Neuron for HhNeuron {
-    fn node_id(&self) -> Uuid {
-        self.id
-    }
-
-    fn tick(&mut self, input_current: f32, ctx: &NeuronTickCtx) -> bool {
-        let dt = ctx.dt_ms;
-        self.v_prev = self.v;
-
+    /// Advance the state by a single integrator substep of `dt`. The
+    /// public `tick` calls this `substeps` times — see the rationale on
+    /// `HhIntegrator::max_safe_dt_ms`. Pure mutation of `v / m / h / n`
+    /// — refractory + spike detection live in `tick`.
+    fn step(&mut self, dt: f32, input_current: f32) {
         match self.cfg.integrator {
             HhIntegrator::Euler => {
                 let (dv, dm, dh, dn) =
@@ -534,18 +531,76 @@ impl Neuron for HhNeuron {
                     (self.n + dt / 6.0 * (k1.3 + 2.0 * k2.3 + 2.0 * k3.3 + k4.3)).clamp(0.0, 1.0);
             }
         }
+    }
 
-        if self.refractory_left > 0.0 {
+    /// Derivatives (dV/dt, dm/dt, dh/dt, dn/dt) at a given state + drive.
+    /// Pulled out so RK4 can call it four times per tick.
+    fn derivatives(&self, v: f32, m: f32, h: f32, n: f32, i_ext: f32) -> (f32, f32, f32, f32) {
+        let cfg = &self.cfg;
+        let i_na = cfg.g_na * m.powi(3) * h * (v - cfg.e_na);
+        let i_k = cfg.g_k * n.powi(4) * (v - cfg.e_k);
+        let i_l = cfg.g_l * (v - cfg.e_l);
+        let dv = (i_ext - i_na - i_k - i_l) / cfg.c_m;
+
+        let (am, bm) = (alpha_m(v), beta_m(v));
+        let (ah, bh) = (alpha_h(v), beta_h(v));
+        let (an, bn) = (alpha_n(v), beta_n(v));
+        let dm = am * (1.0 - m) - bm * m;
+        let dh = ah * (1.0 - h) - bh * h;
+        let dn = an * (1.0 - n) - bn * n;
+        (dv, dm, dh, dn)
+    }
+}
+
+impl Neuron for HhNeuron {
+    fn node_id(&self) -> Uuid {
+        self.id
+    }
+
+    fn tick(&mut self, input_current: f32, ctx: &NeuronTickCtx) -> bool {
+        let dt = ctx.dt_ms;
+        self.v_prev = self.v;
+
+        // Internal substepping. Production dt is 5 ms (tick_hz=200), but
+        // HH is only stable for dt ≲ 0.01 (Euler) / 0.05 (RK4). We split
+        // `dt` into N substeps of size dt/N so the caller's tick rate
+        // doesn't NaN the membrane. Without this, a production HH cortex
+        // never spikes — the bug responsible for "HH clicks do nothing"
+        // in the May 25 report.
+        let max_inner = self.cfg.integrator.max_safe_dt_ms();
+        let substeps = if dt > max_inner {
+            (dt / max_inner).ceil() as u32
+        } else {
+            1
+        };
+        let inner_dt = dt / substeps as f32;
+
+        let mut spiked = false;
+        for _ in 0..substeps {
+            let v_before = self.v;
+            self.step(inner_dt, input_current);
+            // Spike detection runs per-substep so a fast upward crossing
+            // inside the tick isn't missed. Once we register one spike,
+            // suppress further detection for the rest of this tick (the
+            // refractory left below covers subsequent ticks).
+            if !spiked
+                && self.refractory_left <= 0.0
+                && v_before < self.cfg.v_spike_thresh
+                && self.v >= self.cfg.v_spike_thresh
+            {
+                spiked = true;
+                self.refractory_left = self.cfg.refractory_ms;
+            }
+        }
+
+        // Decrement refractory by the full tick (not the substep) — the
+        // refractory window is a per-tick concept independent of how
+        // many substeps we ran.
+        if self.refractory_left > 0.0 && !spiked {
             self.refractory_left = (self.refractory_left - dt).max(0.0);
-            return false;
         }
 
-        // Spike = upward crossing of the detection threshold.
-        let crossed = self.v_prev < self.cfg.v_spike_thresh && self.v >= self.cfg.v_spike_thresh;
-        if crossed {
-            self.refractory_left = self.cfg.refractory_ms;
-        }
-        crossed
+        spiked
     }
 
     fn membrane_potential(&self) -> f32 {

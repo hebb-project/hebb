@@ -148,12 +148,18 @@ fn folder_backed_hh_cortex_fires_after_open() {
 
     let opened = Cortex::open(&root).unwrap();
     let mut engine = hydrate_engine(&opened);
-    // HH needs more current and a longer window — the channel dynamics
-    // are slower than LIF's leaky integrator.
+    // Run at production dt (5 ms — tick_hz = 200). Without
+    // HhNeuron::tick's internal substepping the membrane would NaN out
+    // before crossing threshold and this test would fail — keeping the
+    // production dt here is the regression anchor: if substepping
+    // breaks, this test goes red, not the user's HH cortex in the
+    // desktop. Inject 15 µA/cm² for 50 ms so the integrator has time to
+    // drive the membrane through threshold under either integrator.
     engine.inject(pre, 15.0, 50.0);
     assert!(
-        run_until_spike(&mut engine, 0.05, 100.0),
-        "HH folder-backed cortex produced no spike within 100 ms of injection"
+        run_until_spike(&mut engine, 5.0, 200.0),
+        "HH folder-backed cortex produced no spike at production dt=5ms — \
+         internal substepping in HhNeuron::tick is broken"
     );
     std::fs::remove_dir_all(&root).ok();
 }
