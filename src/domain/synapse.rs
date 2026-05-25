@@ -42,6 +42,12 @@ pub trait Synapse: Send + Sync + 'static {
     fn weight(&self) -> f32;
     fn set_weight(&mut self, w: f32);
 
+    /// Stable kebab-case identifier for the learning rule — must match the
+    /// `kind` string in `topology.json` (e.g. `"stdp"`, `"plastic-synapse"`).
+    /// Used so callers (and tests) can verify the installed implementation
+    /// without naming a concrete type.
+    fn kind_name(&self) -> &'static str;
+
     /// Current contribution this tick given whether the pre-synaptic
     /// neuron fired. Pure function of `(weight, pre_fired)`.
     fn transmit(&self, pre_fired: bool) -> f32;
@@ -135,6 +141,9 @@ impl Synapse for StdpSynapse {
     }
     fn set_weight(&mut self, w: f32) {
         self.weight = w.clamp(self.w_min, self.w_max);
+    }
+    fn kind_name(&self) -> &'static str {
+        "stdp"
     }
 
     fn transmit(&self, pre_fired: bool) -> f32 {

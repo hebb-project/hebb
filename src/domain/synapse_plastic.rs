@@ -188,6 +188,9 @@ impl Synapse for PlasticSynapse {
     fn set_weight(&mut self, w: f32) {
         self.weight = w.clamp(self.w_min, self.w_max);
     }
+    fn kind_name(&self) -> &'static str {
+        "plastic-synapse"
+    }
 
     fn transmit(&self, pre_fired: bool) -> f32 {
         if pre_fired {

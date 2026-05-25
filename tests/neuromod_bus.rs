@@ -43,6 +43,9 @@ impl Synapse for RecordingSynapse {
         0.0
     }
     fn set_weight(&mut self, _w: f32) {}
+    fn kind_name(&self) -> &'static str {
+        "recording"
+    }
     fn transmit(&self, _pre_fired: bool) -> f32 {
         0.0
     }

@@ -155,6 +155,31 @@ impl SimEngine {
         self.synapses.iter().map(|s| (s.id(), s.weight())).collect()
     }
 
+    /// Overwrite the weight of an existing edge in place, preserving its
+    /// installed synapse kind (STDP, PlasticSynapse, etc). Returns true if
+    /// the edge exists. Used by folder-open to apply persisted weights on
+    /// top of the kind selected by `add_edge_with_kind` — re-issuing
+    /// `add_edge` here would silently downgrade a PlasticSynapse to STDP.
+    pub fn set_edge_weight(&mut self, edge_id: Uuid, weight: f32) -> bool {
+        for s in &mut self.synapses {
+            if s.id() == edge_id {
+                s.set_weight(weight);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Kebab-case name of the learning rule installed on an edge — matches
+    /// the `kind` string in `topology.json`. Returns `None` if the edge id
+    /// is unknown. Primarily a test/introspection hook.
+    pub fn edge_kind_name(&self, edge_id: Uuid) -> Option<&'static str> {
+        self.synapses
+            .iter()
+            .find(|s| s.id() == edge_id)
+            .map(|s| s.kind_name())
+    }
+
     pub fn inject(&mut self, node_id: Uuid, current: f32, duration_ms: f32) {
         if !self.neurons.contains_key(&node_id) {
             return;
@@ -476,6 +501,36 @@ mod voltage_tests {
         let samples = eng.sample_voltages(Some(&[b, missing, a]));
         let ids: Vec<Uuid> = samples.iter().map(|(id, _)| *id).collect();
         assert_eq!(ids, vec![b, a]);
+    }
+
+    #[test]
+    fn set_edge_weight_preserves_synapse_kind() {
+        // Regression: the previous open path applied persisted weights by
+        // calling `add_edge`, which silently replaced a PlasticSynapse with
+        // an STDP synapse. `set_edge_weight` must mutate in place.
+        let mut eng = SimEngine::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let e = Uuid::new_v4();
+        eng.add_neuron(a);
+        eng.add_neuron(b);
+        eng.add_edge_with_kind(
+            e,
+            a,
+            b,
+            0.1,
+            &SynapseKind::Plastic(Default::default()),
+        );
+        assert_eq!(eng.edge_kind_name(e), Some("plastic-synapse"));
+        assert!(eng.set_edge_weight(e, 0.42));
+        assert_eq!(eng.edge_kind_name(e), Some("plastic-synapse"));
+        assert_eq!(eng.weight_snapshot().iter().find(|(id, _)| *id == e).unwrap().1, 0.42);
+    }
+
+    #[test]
+    fn set_edge_weight_returns_false_for_unknown_edge() {
+        let mut eng = SimEngine::new();
+        assert!(!eng.set_edge_weight(Uuid::new_v4(), 1.0));
     }
 
     #[test]
