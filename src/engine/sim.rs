@@ -274,6 +274,28 @@ impl SimEngine {
         self.synapses.len()
     }
 
+    /// Sample membrane potentials (mV) for the live voltage stream.
+    ///
+    /// `filter = Some(ids)` collects only those neurons (skipping unknown
+    /// ids) — the common case, since the UI tracks a handful of selected
+    /// neurons. `filter = None` collects every neuron; callers are
+    /// responsible for bounding that against network size before pushing
+    /// it onto a socket. Order is unspecified for the `None` case
+    /// (HashMap iteration); the `Some` case preserves the requested order.
+    pub fn sample_voltages(&self, filter: Option<&[Uuid]>) -> Vec<(Uuid, f32)> {
+        match filter {
+            Some(ids) => ids
+                .iter()
+                .filter_map(|id| self.neurons.get(id).map(|n| (*id, n.membrane_potential())))
+                .collect(),
+            None => self
+                .neurons
+                .iter()
+                .map(|(id, n)| (*id, n.membrane_potential()))
+                .collect(),
+        }
+    }
+
     /// Return the introspectable parameters for a neuron by ID, or
     /// `None` if it isn't in the engine. Matches `Neuron::params`.
     pub fn neuron_params(&self, node_id: Uuid) -> Option<serde_json::Value> {
@@ -406,5 +428,51 @@ impl SimEngine {
 impl Default for SimEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod voltage_tests {
+    use super::*;
+
+    #[test]
+    fn sample_voltages_none_returns_every_neuron() {
+        let mut eng = SimEngine::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        eng.add_neuron(a);
+        eng.add_neuron(b);
+        let samples = eng.sample_voltages(None);
+        assert_eq!(samples.len(), 2);
+        assert!(samples.iter().all(|(_, v)| v.is_finite()));
+    }
+
+    #[test]
+    fn sample_voltages_filter_preserves_order_and_skips_unknown() {
+        let mut eng = SimEngine::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let missing = Uuid::new_v4();
+        eng.add_neuron(a);
+        eng.add_neuron(b);
+        // Request b first, then an unknown id, then a — order should follow
+        // the request and the unknown id should be dropped silently.
+        let samples = eng.sample_voltages(Some(&[b, missing, a]));
+        let ids: Vec<Uuid> = samples.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, vec![b, a]);
+    }
+
+    #[test]
+    fn sample_voltages_tracks_membrane_change_after_stimulation() {
+        let mut eng = SimEngine::new();
+        let a = Uuid::new_v4();
+        eng.add_neuron(a);
+        let rest = eng.sample_voltages(Some(&[a]))[0].1;
+        eng.inject(a, 50.0, 10.0);
+        for _ in 0..5 {
+            eng.tick(1.0);
+        }
+        let driven = eng.sample_voltages(Some(&[a]))[0].1;
+        assert_ne!(rest, driven, "membrane potential should move under current");
     }
 }

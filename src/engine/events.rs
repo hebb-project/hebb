@@ -65,3 +65,30 @@ impl WeightFrame {
         }
     }
 }
+
+/// One neuron's membrane potential at a sampling instant. `v_mV` is the
+/// raw membrane potential in millivolts as reported by
+/// [`crate::domain::Neuron::membrane_potential`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoltageSample {
+    pub node_id: Uuid,
+    #[serde(rename = "v_mV")]
+    pub v_mv: f32,
+}
+
+/// Versioned membrane-potential frame for the `/ws/voltage` stream. Unlike
+/// spikes (event-driven) this is sampled on a timer, so each frame is a
+/// full snapshot of the sampled set at `t_ms`. Versioned so a future
+/// binary encoding stays non-breaking on the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoltageFrame {
+    pub v: u8,
+    pub t_ms: f64,
+    pub samples: Vec<VoltageSample>,
+}
+
+impl VoltageFrame {
+    pub fn new(t_ms: f64, samples: Vec<VoltageSample>) -> Self {
+        Self { v: 1, t_ms, samples }
+    }
+}

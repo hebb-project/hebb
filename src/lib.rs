@@ -61,6 +61,6 @@ pub use domain::{
     StdpSynapse, StimInput, Stimulator, Synapse, SynapseCtx,
 };
 pub use engine::{
-    Channel, NeuromodulatorState, Pulse, SimEngine, SpikeEvent, SpikeFrame, WeightDelta,
-    WeightFrame,
+    Channel, NeuromodulatorState, Pulse, SimEngine, SpikeEvent, SpikeFrame, VoltageFrame,
+    VoltageSample, WeightDelta, WeightFrame,
 };
