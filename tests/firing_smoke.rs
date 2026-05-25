@@ -24,11 +24,17 @@ use cortex_snn::format::topology::{NeuronSpec, SynapseSpec, TopologyDefaults};
 use uuid::Uuid;
 
 fn tmp_root(label: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let p = std::env::temp_dir().join(format!("cortex-firing-smoke-{label}-{nanos}"));
+    // Counter + nanos: cargo runs tests in parallel by default; two
+    // tests sharing the same `label` (e.g. both "lif") can land on the
+    // same nanosecond and stomp each other's `.cortex/` folder.
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let p = std::env::temp_dir().join(format!("cortex-firing-smoke-{label}-{nanos}-{n}"));
     std::fs::create_dir_all(&p).unwrap();
     p
 }
@@ -160,6 +166,68 @@ fn folder_backed_hh_cortex_fires_after_open() {
         run_until_spike(&mut engine, 5.0, 200.0),
         "HH folder-backed cortex produced no spike at production dt=5ms — \
          internal substepping in HhNeuron::tick is broken"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn ui_click_stimulus_defaults_fire_lif_without_avalanche() {
+    // The UI's click-to-stimulate uses (current=80, duration=10ms) by
+    // default — a brief pulse. Verify (a) it actually fires a resting
+    // LIF neuron, (b) without recurrent input the firing doesn't sustain
+    // past the pulse. The old default (40, 400) failed (b) on a random-
+    // recurrent topology: ~80 ticks of pegged input + STDP cascaded into
+    // a 2k spike/sec avalanche.
+    let (cortex, pre, _post, _edge) = create_pair_cortex("lif", NeuronSpec::lif());
+    let root = cortex.root().to_path_buf();
+    drop(cortex);
+
+    let opened = Cortex::open(&root).unwrap();
+    let mut engine = hydrate_engine(&opened);
+    engine.inject(pre, 80.0, 10.0);
+    let mut total_spikes = 0usize;
+    for _ in 0..200 {
+        // 200 × 5 ms = 1 s
+        let frame = engine.tick(5.0);
+        total_spikes += frame.events.len();
+    }
+    assert!(total_spikes >= 1, "click stimulus must fire at least one spike");
+    // 2 neurons × 1 s × generous-headroom — even with the STDP-coupled
+    // post neuron firing through the edge, a brief stimulus pulse
+    // should not produce more than a handful of spikes total. The old
+    // (40, 400) default produced thousands.
+    assert!(
+        total_spikes < 50,
+        "click stimulus avalanched: {total_spikes} spikes in 1 s on a 2-neuron net"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn ui_click_stimulus_defaults_fire_hh() {
+    // Same defaults must also fire an HH neuron — clicks shouldn't be
+    // silent for HH networks. HH needs sustained current; if 10 ms turns
+    // out to be too short, the test will tell us before the user does.
+    let (cortex, pre, _post, _edge) = create_pair_cortex("hh", NeuronSpec::hh(None));
+    let root = cortex.root().to_path_buf();
+    drop(cortex);
+
+    let opened = Cortex::open(&root).unwrap();
+    let mut engine = hydrate_engine(&opened);
+    engine.inject(pre, 80.0, 10.0);
+    let mut fired = false;
+    for _ in 0..40 {
+        // 40 × 5 ms = 200 ms — plenty for HH to swing through one AP.
+        let frame = engine.tick(5.0);
+        if !frame.events.is_empty() {
+            fired = true;
+            break;
+        }
+    }
+    assert!(
+        fired,
+        "click stimulus (80 µA/cm² × 10 ms) failed to fire an HH neuron — \
+         bump the default duration or current"
     );
     std::fs::remove_dir_all(&root).ok();
 }
