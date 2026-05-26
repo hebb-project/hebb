@@ -2,7 +2,7 @@
 
 Pure-Rust spiking-neural-network substrate + PyO3 Python bindings. Published as `hebb` on [crates.io](https://crates.io/crates/hebb) and `hebb-py` on PyPI.
 
-This repo is **library-only**. The desktop app and visualizer live at [hebb-project/hebb](https://github.com/hebb-project/hebb) and consume this crate as a versioned dep.
+This repo is **library-only**. The desktop app and visualizer live at [hebb-project/hebb_app](https://github.com/hebb-project/hebb_app) and consume this crate as a versioned dep.
 
 ## Repo shape
 
@@ -14,7 +14,7 @@ This repo is **library-only**. The desktop app and visualizer live at [hebb-proj
 ## Scope discipline
 
 - **In scope:** neuron models (`src/domain/neuron*.rs`), synapse models (`src/domain/synapse*.rs`), the simulation engine (`src/engine/`), seed-network generators (`src/seeds.rs`), the on-disk format (`src/format/`, `src/disk/`), the `SimEngine` / `Cortex` public API, and the PyO3 wrappers in `python/src/`.
-- **Out of scope:** anything that depends on tokio / axum / diesel / a database / a UI / an LLM bridge. That's the app's concern; it belongs in [hebb-project/hebb](https://github.com/hebb-project/hebb). If you're tempted to add an I/O dep here, push back.
+- **Out of scope:** anything that depends on tokio / axum / diesel / a database / a UI / an LLM bridge. That's the app's concern; it belongs in [hebb-project/hebb_app](https://github.com/hebb-project/hebb_app). If you're tempted to add an I/O dep here, push back.
 
 ## Cross-repo coordination
 
@@ -22,7 +22,7 @@ After a change to the public Rust API:
 
 1. Bump the version in `Cargo.toml` (and `pyproject.toml`).
 2. `cargo publish` (Rust crate) and `maturin publish` (Python wheel) — see below.
-3. Bump the `hebb = "..."` line in [hebb-project/hebb](https://github.com/hebb-project/hebb)'s `core/Cargo.toml` and `desktop/src-tauri/Cargo.toml`. Fix any breakage in `core/src/` and `desktop/src-tauri/src/` if the API changed.
+3. Bump the `hebb = "..."` line in [hebb-project/hebb_app](https://github.com/hebb-project/hebb_app)'s `core/Cargo.toml` and `desktop/src-tauri/Cargo.toml`. Fix any breakage in `core/src/` and `desktop/src-tauri/src/` if the API changed.
 
 The app repo *should not* break silently because of a refactor here. If you rename or remove anything in the public API, also open a PR against the app repo and link it.
 
