@@ -353,7 +353,15 @@ mod tests {
         event::{CortexEventKind, CortexEventRecord},
         topology::{NeuronSpec, SynapseSpec, TopologyDefaults},
     };
+    use std::sync::Mutex;
     use std::time::SystemTime;
+
+    // Serializes any test that reads `CORTEX_MAX_TOPOLOGY_BYTES`, since
+    // `topology_size_limit_enforced` mutates it as process-global state
+    // and `cargo test` runs tests in parallel by default. Without this,
+    // a round-trip test can observe the 16-byte limit set by the
+    // size-limit test and erroneously fail with `TopologyTooLarge`.
+    static TOPOLOGY_LIMIT_ENV: Mutex<()> = Mutex::new(());
 
     fn tmp_root(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -389,6 +397,8 @@ mod tests {
 
     #[test]
     fn topology_round_trips_on_disk() {
+        // Lock against `topology_size_limit_enforced`; see TOPOLOGY_LIMIT_ENV.
+        let _guard = TOPOLOGY_LIMIT_ENV.lock().unwrap_or_else(|e| e.into_inner());
         let root = tmp_root("topology");
         let t = hh_empty();
         write_topology(&root, &t).unwrap();
@@ -399,6 +409,8 @@ mod tests {
 
     #[test]
     fn topology_size_limit_enforced() {
+        // Holds for the duration of the env-var mutation. See TOPOLOGY_LIMIT_ENV.
+        let _guard = TOPOLOGY_LIMIT_ENV.lock().unwrap_or_else(|e| e.into_inner());
         let root = tmp_root("limit");
         let t = hh_empty();
         write_topology(&root, &t).unwrap();
