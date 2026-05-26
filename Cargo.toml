@@ -19,7 +19,7 @@ publish = true
 repository = "https://github.com/hebb-project/hebb_core"
 homepage = "https://github.com/hebb-project/hebb_core"
 license = "Apache-2.0"
-keywords = ["spiking-neural-network", "snn", "neuroscience", "stdp", "lif"]
+keywords = ["snn", "neuroscience", "stdp", "neural-network", "simulation"]
 categories = ["science", "simulation"]
 
 [lib]
