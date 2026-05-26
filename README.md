@@ -31,7 +31,7 @@ The `hebb` crate is two things at once:
 
 | You are… | Use `hebb` as… | Start here |
 | --- | --- | --- |
-| A **computational-neuroscience / SNN / neuromorphic researcher** | A fast, scriptable spiking-network simulator (Rust crate or `import hebb` from Python) | [Use as a library](#use-as-a-library) |
+| A **computational-neuroscience / SNN / neuromorphic researcher** | A fast, scriptable spiking-network simulator (Rust crate or `import hebb_py` from Python) | [Use as a library](#use-as-a-library) |
 | A **Rust developer** integrating spiking models into a larger system | A pure-Rust, no-I/O crate that drops cleanly into anything (wasm, FFI, embedded sim, server) | [Use as a library](#use-as-a-library) |
 | A **PyTorch / SNN-ML researcher** | A fast event-driven runtime for inference / online learning, complementing surrogate-gradient training in snnTorch / Norse / BindsNET / SpikingJelly | [Vision](#vision) |
 | A **Hebb desktop / visualizer contributor** | The substrate the app depends on. New neuron / synapse / format work lands here. | [Repository layout](#repository-layout) |
@@ -42,7 +42,7 @@ The `hebb` crate is two things at once:
 - **Plastic synapses** — STDP and dopamine-gated R-STDP, with parameters streamable through the on-disk format.
 - **Deterministic seed generators** — `random`, `ring`, `small-world`, `layered`. Same seed → same network.
 - **Embed-anywhere** — pure-Rust, no I/O, no async runtime, no unsafe. WASM-ready. Filesystem support is opt-in behind the `disk` feature.
-- **Python bindings** — `import hebb`; same engine, same domain types, same on-disk format.
+- **Python bindings** — `import hebb_py`; same engine, same domain types, same on-disk format.
 
 ## Repository layout
 
@@ -63,14 +63,14 @@ cargo add hebb
 pip install hebb-py
 ```
 
-> The PyPI distribution is `hebb-py` because the bare `hebb` name on PyPI is taken by an unrelated astronomy package. The Python module name is still `hebb`.
+> Both the PyPI distribution and the Python module are `hebb-py` / `hebb_py`. The bare `hebb` name on PyPI is taken by an unrelated astronomy package, and `import hebb_py` avoids colliding with it.
 
 Drive the substrate from Python:
 
 ```python
-import hebb
+import hebb_py
 
-sim = hebb.Sim()
+sim = hebb_py.Sim()
 a = sim.add_neuron()
 b = sim.add_neuron()
 sim.add_edge(a, b, weight=0.9)
@@ -133,7 +133,7 @@ cargo test --features disk
 # Python bindings (requires maturin)
 pip install maturin
 maturin develop --features pyo3/extension-module
-python -c "import hebb; print(hebb.__version__)"
+python -c "import hebb_py; print(hebb_py.__version__)"
 ```
 
 ## Contributing

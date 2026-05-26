@@ -60,4 +60,4 @@ jobs:
       - name: smoke test
         run: |
           pip install --find-links target/wheels hebb-py
-          python -c "import hebb; print('hebb', hebb.__version__)"
+          python -c "import hebb_py; print('hebb_py', hebb_py.__version__)"

@@ -7,7 +7,7 @@ This repo is **library-only**. The desktop app and visualizer live at [hebb-proj
 ## Repo shape
 
 - `src/` — the `hebb` Rust crate. Pure-Rust, no I/O by default. Filesystem support is opt-in behind the `disk` feature.
-- `python/` — PyO3 bindings. Cargo package `hebb-py`, cdylib `[lib] name = "hebb"` so Python users `import hebb`. Built with maturin; produces the `hebb-py` PyPI wheel.
+- `python/` — PyO3 bindings. Cargo package `hebb-py`, cdylib `[lib] name = "hebb_py"` so Python users `import hebb_py`. Built with maturin; produces the `hebb-py` PyPI wheel.
 - `tests/` — integration tests against the public Rust API.
 - `SCHEMA.md` — on-disk format spec for `.cortex/` folders.
 
@@ -36,7 +36,7 @@ Don't publish a `0.x` bump unless `cargo test --features disk` and `maturin buil
 ## Compatibility
 
 - Rust API: keep `pub` surface stable within a `0.x` line. Breaking changes get a minor-version bump.
-- Python API: `import hebb` exposes `Sim`, `Cortex`, and the `seeds` submodule. Treat those as a public contract.
+- Python API: `import hebb_py` exposes `Sim`, `Cortex`, and the `seeds` submodule. Treat those as a public contract.
 - On-disk format: `.cortex/` folders are versioned via `metadata.json`. Bumping the schema requires a migration path or a hard version gate in `format/metadata.rs`.
 
 ## Git hygiene
