@@ -2,7 +2,7 @@
   <img src="docs/assets/logo.png" alt="Hebb logo" width="160" />
 </p>
 
-<h1 align="center">hebb</h1>
+<h1 align="center">Hebb</h1>
 
 <p align="center">
   <em>Pure-Rust spiking-neural-network substrate — embed-anywhere, with Python bindings.</em>
