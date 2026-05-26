@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome" />
 </p>
 
-`hebb` is the simulator substrate underneath the broader [Hebb project](https://github.com/hebb-project/hebb): a fast, no-I/O-by-default Rust crate that implements the spiking-network primitives — neuron models, synapse models, plasticity, deterministic seed generators, and an optional on-disk format. The desktop app and visualizer consume this crate; you can also embed it directly in your own Rust or Python work.
+`hebb` is the simulator substrate underneath the broader [Hebb project](https://github.com/hebb-project/hebb_app): a fast, no-I/O-by-default Rust crate that implements the spiking-network primitives — neuron models, synapse models, plasticity, deterministic seed generators, and an optional on-disk format. The desktop app and visualizer consume this crate; you can also embed it directly in your own Rust or Python work.
 
 ## What is this?
 
@@ -23,7 +23,7 @@ The `hebb` crate is two things at once:
 
 1. **A spiking-neural-network simulator you can drop into existing code.** A `SimEngine` state machine you `tick` forward in time, with built-in neuron models (LIF, Izhikevich, AdEx, Hodgkin–Huxley) and plastic synapses (STDP, dopamine-gated R-STDP). No filesystem, no async runtime, no database — it's pure compute. If you do computational neuroscience, neuromorphic, or SNN research, this is a scriptable spiking substrate you can use today.
 
-2. **The portable core of the larger Hebb cortex-mechanism project.** The same crate is the seed of an event-driven, continually-learning AI substrate where neural networks are *modules*, not the core — see [the umbrella project README](https://github.com/hebb-project/hebb).
+2. **The portable core of the larger Hebb cortex-mechanism project.** The same crate is the seed of an event-driven, continually-learning AI substrate where neural networks are *modules*, not the core — see [the umbrella project README](https://github.com/hebb-project/hebb_app).
 
 > Don't know what a "cortex" means in this context? Read it as a **brain-inspired memory + compute substrate**. The simplest useful form is a graph of neurons that learn from a stream of events — which is exactly what `SimEngine` gives you.
 
@@ -101,7 +101,7 @@ for _ in 0..200 {
 }
 ```
 
-For the on-disk `.cortex/` folder format (open the same network you build here in the [Hebb desktop app](https://github.com/hebb-project/hebb)'s visualizer), enable the `disk` feature:
+For the on-disk `.cortex/` folder format (open the same network you build here in the [Hebb desktop app](https://github.com/hebb-project/hebb_app)'s visualizer), enable the `disk` feature:
 
 ```toml
 hebb = { version = "0.1", features = ["disk"] }
