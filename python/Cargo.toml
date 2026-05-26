@@ -3,12 +3,14 @@ name = "hebb-py"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Python bindings for hebb — `import hebb`"
+description = "Python bindings for hebb — `import hebb_py`"
 
-# The cargo package is `hebb-py`.
-# The compiled cdylib is `hebb` so Python users say `import hebb`.
+# The cargo package is `hebb-py`. The compiled cdylib is `hebb_py` so
+# Python users say `import hebb_py`. Matching the PyPI distribution
+# name avoids collision with the unrelated `hebb` PyPI package (an
+# astronomy library that occupies the bare `hebb` import).
 [lib]
-name = "hebb"
+name = "hebb_py"
 crate-type = ["cdylib"]
 
 [dependencies]

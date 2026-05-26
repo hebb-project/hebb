@@ -1,6 +1,6 @@
 //! Python bindings for the `hebb` substrate.
 //!
-//! Built as a maturin-managed cdylib; exposes a `hebb` Python
+//! Built as a maturin-managed cdylib; exposes a `hebb_py` Python
 //! module whose only class is [`Sim`], a thin wrapper around
 //! [`hebb::SimEngine`].
 //!
@@ -130,8 +130,8 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<Value> {
 ///
 /// Example
 /// -------
-/// >>> import hebb
-/// >>> sim = hebb.Sim()
+/// >>> import hebb_py
+/// >>> sim = hebb_py.Sim()
 /// >>> a = sim.add_neuron()
 /// >>> b = sim.add_neuron()
 /// >>> sim.add_edge(a, b, weight=0.7)
@@ -345,11 +345,11 @@ impl PySim {
     }
 }
 
-/// `import hebb` entry point. Adds the `Sim` class plus a
+/// `import hebb_py` entry point. Adds the `Sim` class plus a
 /// `__version__` string sourced from the cargo package version so
 /// Python callers can sanity-check what they linked.
 #[pymodule]
-fn hebb(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn hebb_py(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySim>()?;
     m.add_class::<PyCortex>()?;
     register_seeds_submodule(m)?;
