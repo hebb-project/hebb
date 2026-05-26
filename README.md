@@ -32,7 +32,8 @@ The `hebb` crate is two things at once:
 | You are… | Use `hebb` as… | Start here |
 | --- | --- | --- |
 | A **computational-neuroscience / SNN / neuromorphic researcher** | A fast, scriptable spiking-network simulator (Rust crate or `import hebb` from Python) | [Use as a library](#use-as-a-library) |
-| A **Rust developer** integrating spiking models into a larger system | A pure-Rust, no-I/O crate that drops cleanly into anything (wasm, FFI, embedded sim, server) | [Rust](#rust) |
+| A **Rust developer** integrating spiking models into a larger system | A pure-Rust, no-I/O crate that drops cleanly into anything (wasm, FFI, embedded sim, server) | [Use as a library](#use-as-a-library) |
+| A **PyTorch / SNN-ML researcher** | A fast event-driven runtime for inference / online learning, complementing surrogate-gradient training in snnTorch / Norse / BindsNET / SpikingJelly | [Vision](#vision) |
 | A **Hebb desktop / visualizer contributor** | The substrate the app depends on. New neuron / synapse / format work lands here. | [Repository layout](#repository-layout) |
 
 ## Features
@@ -50,17 +51,35 @@ The `hebb` crate is two things at once:
 - `tests/` — integration tests against the public Rust API.
 - `SCHEMA.md` — on-disk format spec for `.cortex/` folders (gated behind the `disk` feature).
 
-## Getting started
+## Use as a library
 
-### Rust
+Install:
 
-```toml
-[dependencies]
-hebb = "0.1"
+```bash
+# Rust
+cargo add hebb
 
-# Enable the filesystem reader/writer for `.cortex/` folders:
-hebb = { version = "0.1", features = ["disk"] }
+# Python
+pip install hebb-py
 ```
+
+> The PyPI distribution is `hebb-py` because the bare `hebb` name on PyPI is taken by an unrelated astronomy package. The Python module name is still `hebb`.
+
+Drive the substrate from Python:
+
+```python
+import hebb
+
+sim = hebb.Sim()
+a = sim.add_neuron()
+b = sim.add_neuron()
+sim.add_edge(a, b, weight=0.9)
+sim.stimulate(a, current=50.0, duration_ms=30.0)
+
+spikes = sim.run(dt_ms=1.0, n_steps=200)   # -> [(neuron_id, t_ms), ...]
+```
+
+…or from Rust:
 
 ```rust
 use hebb::SimEngine;
@@ -82,29 +101,28 @@ for _ in 0..200 {
 }
 ```
 
-### Python
+For the on-disk `.cortex/` folder format (open the same network you build here in the [Hebb desktop app](https://github.com/hebb-project/hebb)'s visualizer), enable the `disk` feature:
 
-```bash
-pip install hebb-py
+```toml
+hebb = { version = "0.1", features = ["disk"] }
 ```
 
-(The PyPI distribution is `hebb-py` because the bare `hebb` name on PyPI is taken by an unrelated astronomy package. The Python module name is still `hebb`.)
+## Vision
 
-```python
-import hebb
+The computational-neuroscience and SNN ecosystem is already rich: **PyTorch-based ML frameworks** (snnTorch, BindsNET, Norse, SpikingJelly, Rockpool) train spiking networks with surrogate gradients; **biophysical simulators** (NEST, Brian2, NEURON, GeNN, Arbor) model networks down to morphology; **neuromorphic platforms** (Intel Loihi / Lava, SpiNNaker, BrainChip Akida, SynSense) run trained networks on event-driven hardware. Each of these is excellent in its niche, but they don't talk to each other, and very few of them ship as an embeddable, no-runtime-deps crate you can drop into a larger system.
 
-sim = hebb.Sim()
-a = sim.add_neuron()
-b = sim.add_neuron()
-sim.add_edge(a, b, weight=0.9)
-sim.stimulate(a, current=50.0, duration_ms=30.0)
+`hebb` aims to be a **lightweight, interchange-friendly runtime** that complements those tools rather than competes with them. The roadmap (loose ordering, contributions welcome):
 
-spikes = sim.run(dt_ms=1.0, n_steps=200)   # -> [(neuron_id, t_ms), ...]
-```
+- **PyTorch interop.** Round-trip with snnTorch / Norse / SpikingJelly: train weights with surrogate gradients in PyTorch, export to `hebb` for sparse event-driven inference and online plasticity. Inverse path too — initialize a `hebb` network from a `.pth` checkpoint.
+- **Model-description format support.** Importers/exporters for **NeuroML**, **SONATA** (Allen Brain / BMTK), and (eventually) PyNN models. The goal is that a network defined for NEST or NEURON can run a sparse simulation under `hebb` without rewriting.
+- **Experimental-data ingestion.** Stream **NWB** files into a stimulator so you can replay recorded spike trains against a learning network.
+- **Event-camera datasets.** First-class support for **DVS / N-MNIST / N-Caltech101 / DVS-Gesture** so event-driven workloads are easy to wire up.
+- **Neuromorphic targets.** Long-term: emit a `hebb` network to Intel Loihi (via Lava IR), SpiNNaker, or Akida. Short-term: keep the data layout and event-loop semantics close enough to those platforms that the mapping is mechanical.
+- **More neuron and plasticity models.** Multi-compartment neurons; e-prop / equilibrium-propagation rules; calcium-based plasticity; reward-modulated variants.
+- **Performance.** SIMD-friendly batched ticking; GPU backend for dense-region simulation (likely via `wgpu`); deterministic parallel ticking.
+- **WASM.** Run `hebb` in the browser so the visualizer (and arbitrary educational toys) can simulate without a server.
 
-### Use as a library
-
-The same engine drives the [Hebb desktop app](https://github.com/hebb-project/hebb)'s visualizer — anything you can build with `hebb` opens in that app via the `.cortex/` folder format.
+If you maintain one of the ecosystem tools above and want to talk about interop, please open an issue.
 
 ## Local development
 
