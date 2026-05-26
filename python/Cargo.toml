@@ -1,0 +1,18 @@
+[package]
+name = "hebb-py"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Python bindings for hebb — `import hebb`"
+
+# The cargo package is `hebb-py`.
+# The compiled cdylib is `hebb` so Python users say `import hebb`.
+[lib]
+name = "hebb"
+crate-type = ["cdylib"]
+
+[dependencies]
+snn = { path = "..", package = "hebb", features = ["disk"] }
+pyo3 = { version = "0.22", features = ["extension-module"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }

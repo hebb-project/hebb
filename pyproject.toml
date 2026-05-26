@@ -1,0 +1,25 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "hebb"
+version = "0.1.0"
+description = "Spiking-neural-network substrate — Python bindings for the hebb Rust crate"
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Hebb contributors" }]
+keywords = ["spiking-neural-network", "snn", "neuroscience", "stdp", "lif"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.maturin]
+manifest-path = "python/Cargo.toml"
+features = ["pyo3/extension-module"]
+strip = true
