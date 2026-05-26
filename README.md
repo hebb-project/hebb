@@ -24,8 +24,10 @@ hebb = { version = "0.1", features = ["disk"] }
 ### Python
 
 ```bash
-pip install hebb
+pip install hebb-py
 ```
+
+(The PyPI package is `hebb-py` because the bare `hebb` name was taken on PyPI. The Python module name is still `hebb`.)
 
 ## Quick start
 

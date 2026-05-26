@@ -3,7 +3,7 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "hebb"
+name = "hebb-py"
 version = "0.1.0"
 description = "Spiking-neural-network substrate — Python bindings for the hebb Rust crate"
 requires-python = ">=3.10"
