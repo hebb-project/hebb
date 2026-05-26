@@ -6,7 +6,7 @@
 //! These tests are the contract for the HH cortex type. Anything that
 //! ships a new neuron-model variant should add an analogous trio.
 
-use cortex_snn::{HhConfig, HhIntegrator, HhNeuron, Neuron, NeuronKind, NeuronTickCtx, SimEngine};
+use hebb::{HhConfig, HhIntegrator, HhNeuron, Neuron, NeuronKind, NeuronTickCtx, SimEngine};
 use uuid::Uuid;
 
 /// Drive a single isolated HH neuron with a step current for `total_ms`,

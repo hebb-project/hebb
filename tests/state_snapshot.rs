@@ -5,8 +5,8 @@
 //! a running engine can be reapplied to a fresh engine of the same
 //! kind, and the dynamic membrane state survives.
 
-use cortex_snn::domain::{HhConfig, HhIntegrator, NeuronKind};
-use cortex_snn::SimEngine;
+use hebb::domain::{HhConfig, HhIntegrator, NeuronKind};
+use hebb::SimEngine;
 use uuid::Uuid;
 
 #[test]
@@ -93,7 +93,7 @@ fn restore_unknown_node_is_an_error() {
         .restore_neuron_state(missing, &serde_json::json!({"v": -60.0}))
         .unwrap_err();
     match err {
-        cortex_snn::domain::ParamError::Unknown { .. } => {}
+        hebb::domain::ParamError::Unknown { .. } => {}
         other => panic!("expected Unknown, got {other:?}"),
     }
 }
@@ -107,7 +107,7 @@ fn restore_rejects_non_object_state() {
         .restore_neuron_state(id, &serde_json::json!(42))
         .unwrap_err();
     match err {
-        cortex_snn::domain::ParamError::BadType { .. } => {}
+        hebb::domain::ParamError::BadType { .. } => {}
         other => panic!("expected BadType, got {other:?}"),
     }
 }

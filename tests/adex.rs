@@ -1,4 +1,4 @@
-use cortex_snn::{AdExConfig, AdExNeuron, Neuron, NeuronKind, NeuronTickCtx, SimEngine};
+use hebb::{AdExConfig, AdExNeuron, Neuron, NeuronKind, NeuronTickCtx, SimEngine};
 use uuid::Uuid;
 
 fn spike_times(cfg: AdExConfig, current: f32, dt_ms: f32, total_ms: f32) -> Vec<f32> {

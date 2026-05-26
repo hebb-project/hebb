@@ -1,7 +1,7 @@
 //! Tests for SimEngine::remove_neuron / remove_synapse — cascade,
 //! fan_in rebuild, and idempotence on missing IDs.
 
-use cortex_snn::SimEngine;
+use hebb::SimEngine;
 use uuid::Uuid;
 
 #[test]

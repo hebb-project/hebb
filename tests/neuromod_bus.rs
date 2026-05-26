@@ -14,7 +14,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use cortex_snn::{Channel, NeuromodulatorState, SimEngine, Synapse, SynapseCtx};
+use hebb::{Channel, NeuromodulatorState, SimEngine, Synapse, SynapseCtx};
 use uuid::Uuid;
 
 /// A synapse that records the neuromodulator snapshot it observes on every

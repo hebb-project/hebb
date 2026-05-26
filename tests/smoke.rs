@@ -6,7 +6,7 @@
 //! a downstream consumer (Python wrapper, swarm experiment, replay
 //! tool) can do the same with zero extra context.
 
-use cortex_snn::{SimEngine, SpikeFrame};
+use hebb::{SimEngine, SpikeFrame};
 use uuid::Uuid;
 
 /// Step a network until `node` spikes, or fail loudly. Caps total

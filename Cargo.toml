@@ -1,30 +1,48 @@
+[workspace]
+members = [".", "python"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
 [package]
-name = "cortex-snn"
+name = "hebb"
 version = "0.1.0"
-description = "Spiking-neural-network substrate for the Cortex project — pure-Rust, no I/O, embed-anywhere"
+description = "Spiking-neural-network substrate — pure-Rust, no I/O, embed-anywhere"
 edition.workspace = true
-publish.workspace = true
+publish = true
+repository = "https://github.com/hebb-project/hebb_core"
+homepage = "https://github.com/hebb-project/hebb_core"
+license = "Apache-2.0"
+keywords = ["spiking-neural-network", "snn", "neuroscience", "stdp", "lif"]
+categories = ["science", "simulation"]
 
 [lib]
-name = "cortex_snn"
+name = "hebb"
 path = "src/lib.rs"
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
-# Seedable, deterministic RNG for `cortex_snn::seeds`. `small_rng` is
+# Seedable, deterministic RNG for `hebb::seeds`. `small_rng` is
 # enabled because we use `SmallRng` — fast, deterministic given a seed,
 # 0 dep overhead beyond `rand` itself.
 rand = { version = "0.8", default-features = false, features = ["small_rng", "std"] }
 
 [features]
 default = []
-# Enables `cortex_snn::disk` — filesystem reader/writer for `.cortex/`
-# folders. Off by default so embed-anywhere consumers (wasm, FFI,
-# pure-sim tests) pull zero filesystem code. Pure `std::fs`, no
-# extra deps; the feature flag just gates the module compilation.
+# Enables `hebb::disk` — filesystem reader/writer for `.cortex/` folders.
 disk = []
 
 [dev-dependencies]
 serde_json = { workspace = true }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

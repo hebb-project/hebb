@@ -1,4 +1,4 @@
-use cortex_snn::{ParamError, SimEngine};
+use hebb::{ParamError, SimEngine};
 use uuid::Uuid;
 
 #[test]

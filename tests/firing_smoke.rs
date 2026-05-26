@@ -19,8 +19,8 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cortex_snn::{AddNeuron, AddSynapse, Cortex, CreateOptions, HhConfig, SimEngine, SynapseKind};
-use cortex_snn::format::topology::{NeuronSpec, SynapseSpec, TopologyDefaults};
+use hebb::{AddNeuron, AddSynapse, Cortex, CreateOptions, HhConfig, SimEngine, SynapseKind};
+use hebb::format::topology::{NeuronSpec, SynapseSpec, TopologyDefaults};
 use uuid::Uuid;
 
 fn tmp_root(label: &str) -> PathBuf {
@@ -54,7 +54,7 @@ fn hydrate_engine(cortex: &Cortex) -> SimEngine {
             .unwrap_or(topology.defaults.neuron.kind.as_str());
         match kind {
             "lif" => engine.add_neuron(n.id),
-            "hh" => engine.add_neuron_with_kind(n.id, &cortex_snn::NeuronKind::Hh(Default::default())),
+            "hh" => engine.add_neuron_with_kind(n.id, &hebb::NeuronKind::Hh(Default::default())),
             other => panic!("test hydrate doesn't handle neuron kind '{other}'"),
         }
     }

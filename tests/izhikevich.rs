@@ -1,4 +1,4 @@
-use cortex_snn::{
+use hebb::{
     IzhikevichConfig, IzhikevichNeuron, Neuron, NeuronKind, NeuronTickCtx, SimEngine,
 };
 use uuid::Uuid;
