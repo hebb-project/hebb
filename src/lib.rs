@@ -62,6 +62,6 @@ pub use domain::{
     SynapseKind,
 };
 pub use engine::{
-    Channel, NeuromodulatorState, Pulse, SimEngine, SpikeEvent, SpikeFrame, VoltageFrame,
-    VoltageSample, WeightDelta, WeightFrame,
+    Channel, NeuromodulatorState, Pulse, SimEngine, SimSeedError, SimSeedReport, SpikeEvent,
+    SpikeFrame, VoltageFrame, VoltageSample, WeightDelta, WeightFrame,
 };

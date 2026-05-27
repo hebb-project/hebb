@@ -13,4 +13,4 @@ pub mod sim;
 
 pub use events::{SpikeEvent, SpikeFrame, VoltageFrame, VoltageSample, WeightDelta, WeightFrame};
 pub use neuromod::{Channel, NeuromodulatorState, Pulse};
-pub use sim::SimEngine;
+pub use sim::{SimEngine, SimSeedError, SimSeedReport};
