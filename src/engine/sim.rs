@@ -16,6 +16,41 @@ use crate::domain::{
 };
 use crate::engine::events::{SpikeEvent, SpikeFrame};
 use crate::engine::neuromod::{Channel, NeuromodulatorState, Pulse};
+use crate::format::topology::{NeuronSpec, SynapseSpec};
+use crate::seeds::Seed;
+
+/// Summary returned by [`SimEngine::apply_seed`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct SimSeedReport {
+    pub added_nodes: usize,
+    pub added_edges: usize,
+}
+
+/// Errors raised while resolving a pure seed into concrete engine kinds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SimSeedError {
+    UnknownNeuronKind(String),
+    BadNeuronConfig { kind: String, message: String },
+    UnknownSynapseKind(String),
+    BadSynapseConfig { kind: String, message: String },
+}
+
+impl std::fmt::Display for SimSeedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownNeuronKind(kind) => write!(f, "unknown neuron kind '{kind}'"),
+            Self::BadNeuronConfig { kind, message } => {
+                write!(f, "invalid {kind} neuron config: {message}")
+            }
+            Self::UnknownSynapseKind(kind) => write!(f, "unknown synapse kind '{kind}'"),
+            Self::BadSynapseConfig { kind, message } => {
+                write!(f, "invalid {kind} synapse config: {message}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SimSeedError {}
 
 pub struct SimEngine {
     pub neurons: HashMap<Uuid, Box<dyn Neuron>>,
@@ -110,6 +145,41 @@ impl SimEngine {
         let idx = self.synapses.len();
         self.synapses.push(kind.build(edge_id, pre, post, weight));
         self.fan_in.entry(post).or_default().push(idx);
+    }
+
+    /// Bulk-apply a generated seed directly into this in-memory engine.
+    ///
+    /// Seed rows with no explicit kind use the engine defaults: LIF neurons
+    /// and STDP synapses. Counts report the net number of objects added;
+    /// duplicate nodes/edges are ignored by the existing engine insertion
+    /// rules and therefore are not counted as added.
+    pub fn apply_seed(&mut self, seed: &Seed) -> Result<SimSeedReport, SimSeedError> {
+        let node_kinds: Vec<_> = seed
+            .nodes
+            .iter()
+            .map(|node| resolve_neuron_kind(node.kind.as_ref()))
+            .collect::<Result<_, _>>()?;
+        let edge_kinds: Vec<_> = seed
+            .edges
+            .iter()
+            .map(|edge| resolve_synapse_kind(edge.kind.as_ref()))
+            .collect::<Result<_, _>>()?;
+
+        let nodes_before = self.neurons.len();
+        let edges_before = self.synapses.len();
+
+        for (node, kind) in seed.nodes.iter().zip(node_kinds.iter()) {
+            self.add_neuron_with_kind(node.id, kind);
+        }
+
+        for (edge, kind) in seed.edges.iter().zip(edge_kinds.iter()) {
+            self.add_edge_with_kind(edge.id, edge.pre, edge.post, edge.init_weight, kind);
+        }
+
+        Ok(SimSeedReport {
+            added_nodes: self.neurons.len() - nodes_before,
+            added_edges: self.synapses.len() - edges_before,
+        })
     }
 
     /// Remove a neuron and cascade to its incident synapses. Returns
@@ -472,9 +542,72 @@ impl Default for SimEngine {
     }
 }
 
+fn resolve_neuron_kind(spec: Option<&NeuronSpec>) -> Result<NeuronKind, SimSeedError> {
+    let Some(spec) = spec else {
+        return Ok(NeuronKind::Lif);
+    };
+    match spec.kind.as_str() {
+        "lif" => Ok(NeuronKind::Lif),
+        "hh" => {
+            let cfg = match &spec.config {
+                Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                    SimSeedError::BadNeuronConfig {
+                        kind: spec.kind.clone(),
+                        message: e.to_string(),
+                    }
+                })?,
+                None => Default::default(),
+            };
+            Ok(NeuronKind::Hh(cfg))
+        }
+        "izhikevich" => {
+            let cfg = match &spec.config {
+                Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                    SimSeedError::BadNeuronConfig {
+                        kind: spec.kind.clone(),
+                        message: e.to_string(),
+                    }
+                })?,
+                None => Default::default(),
+            };
+            Ok(NeuronKind::Izhikevich(cfg))
+        }
+        "ad-ex" => {
+            let cfg = match &spec.config {
+                Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                    SimSeedError::BadNeuronConfig {
+                        kind: spec.kind.clone(),
+                        message: e.to_string(),
+                    }
+                })?,
+                None => Default::default(),
+            };
+            Ok(NeuronKind::AdEx(cfg))
+        }
+        other => Err(SimSeedError::UnknownNeuronKind(other.into())),
+    }
+}
+
+fn resolve_synapse_kind(spec: Option<&SynapseSpec>) -> Result<SynapseKind, SimSeedError> {
+    let Some(spec) = spec else {
+        return Ok(SynapseKind::Stdp);
+    };
+    SynapseKind::from_spec(spec).map_err(|message| {
+        if message.starts_with("unknown synapse kind") {
+            SimSeedError::UnknownSynapseKind(spec.kind.clone())
+        } else {
+            SimSeedError::BadSynapseConfig {
+                kind: spec.kind.clone(),
+                message,
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod voltage_tests {
     use super::*;
+    use crate::seeds::{layered, random, ring, small_world, SeedParams};
 
     #[test]
     fn sample_voltages_none_returns_every_neuron() {
@@ -514,17 +647,18 @@ mod voltage_tests {
         let e = Uuid::new_v4();
         eng.add_neuron(a);
         eng.add_neuron(b);
-        eng.add_edge_with_kind(
-            e,
-            a,
-            b,
-            0.1,
-            &SynapseKind::Plastic(Default::default()),
-        );
+        eng.add_edge_with_kind(e, a, b, 0.1, &SynapseKind::Plastic(Default::default()));
         assert_eq!(eng.edge_kind_name(e), Some("plastic-synapse"));
         assert!(eng.set_edge_weight(e, 0.42));
         assert_eq!(eng.edge_kind_name(e), Some("plastic-synapse"));
-        assert_eq!(eng.weight_snapshot().iter().find(|(id, _)| *id == e).unwrap().1, 0.42);
+        assert_eq!(
+            eng.weight_snapshot()
+                .iter()
+                .find(|(id, _)| *id == e)
+                .unwrap()
+                .1,
+            0.42
+        );
     }
 
     #[test]
@@ -545,5 +679,37 @@ mod voltage_tests {
         }
         let driven = eng.sample_voltages(Some(&[a]))[0].1;
         assert_ne!(rest, driven, "membrane potential should move under current");
+    }
+
+    #[test]
+    fn apply_seed_loads_supported_generators_without_disk() {
+        let cases = [
+            random(20, 0.1, 1, SeedParams::default()).unwrap(),
+            ring(20, 2, 2, SeedParams::default()).unwrap(),
+            small_world(20, 2, 0.25, 3, SeedParams::default()).unwrap(),
+            layered(&[3, 4, 2], 4, SeedParams::default()).unwrap(),
+        ];
+
+        for seed in cases {
+            let mut eng = SimEngine::new();
+            let report = eng.apply_seed(&seed).unwrap();
+            assert_eq!(report.added_nodes, seed.nodes.len());
+            assert_eq!(eng.neurons.len(), seed.nodes.len());
+            assert_eq!(report.added_edges, eng.synapses.len());
+            assert!(report.added_edges > 0);
+            assert!(report.added_edges <= seed.edges.len());
+        }
+    }
+
+    #[test]
+    fn apply_seed_scales_to_1000_neurons_without_disk() {
+        let seed = ring(1000, 2, 42, SeedParams::default()).unwrap();
+        let mut eng = SimEngine::new();
+        let report = eng.apply_seed(&seed).unwrap();
+
+        assert_eq!(report.added_nodes, 1000);
+        assert_eq!(report.added_edges, 4000);
+        assert_eq!(eng.neurons.len(), 1000);
+        assert_eq!(eng.synapses.len(), 4000);
     }
 }
